@@ -1,109 +1,177 @@
-import { useRef, useState } from "react";
+import { useState, useRef } from "react";
+import { Image, Send, Smile } from "lucide-react";
 import { useChatStore } from "../store/useChatStore";
-import { Image, Send, X } from "lucide-react";
-import toast from "react-hot-toast";
+import data from '@emoji-mart/data';
+import Picker from '@emoji-mart/react';
 
 const MessageInput = () => {
-  const [text, setText] = useState("");
+  const [message, setMessage] = useState("");
+  const imageInputRef = useRef(null);
   const [imagePreview, setImagePreview] = useState(null);
-  const fileInputRef = useRef(null);
-  const { sendMessage } = useChatStore();
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const { sendMessage, sendGroupMessage, selectedUser, selectedGroup } = useChatStore();
 
-  const handleImageChange = (e) => {
-    const file = e.target.files[0];
-    if (!file.type.startsWith("image/")) {
-      toast.error("Please select an image file");
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setImagePreview(reader.result);
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const removeImage = () => {
-    setImagePreview(null);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  };
-
-  const handleSendMessage = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!text.trim() && !imagePreview) return;
+    if (!message.trim() && !imagePreview) return;
+
+    const messageData = {
+      text: message.trim(),
+      image: imagePreview,
+    };
 
     try {
-      await sendMessage({
-        text: text.trim(),
-        image: imagePreview,
-      });
-
-      // Clear form
-      setText("");
+      if (selectedGroup) {
+        await sendGroupMessage(selectedGroup._id, messageData);
+      } else if (selectedUser) {
+        if (selectedUser.isBot) {
+          setMessage("");
+          await sendMessage(messageData);
+        }
+        else {
+          await sendMessage(messageData);
+        }
+      }
+      setMessage("");
       setImagePreview(null);
-      if (fileInputRef.current) fileInputRef.current.value = "";
     } catch (error) {
-      console.error("Failed to send message:", error);
+      console.error("Error sending message:", error);
     }
+  };
+
+  const handleImageChange = (e) => {
+    console.log(e.target.files);
+    const file = e.target.files[0];
+    if (!file) return;
+    // 检查文件类型
+    if (!file.type.startsWith('image/')) {
+      alert('请上传图片文件（如 JPG、PNG）');
+      return;
+    }
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    // 文件读取成功时的回调
+    reader.onload = (event) => {
+      const img = new window.Image();
+      img.src = event.target.result;
+
+      img.onload = () => {
+        // 创建 canvas 元素
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // 设置 canvas 的宽高为图片的宽高
+        const MAX_WIDTH = 800; // 最大宽度
+        const MAX_HEIGHT = 800; // 最大高度
+        let width = img.width;
+        let height = img.height;
+
+        // 按比例缩放图片
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+
+        // 将图片绘制到 canvas 上
+        ctx.drawImage(img, 0, 0, width, height);
+
+        // 压缩图片（quality 为压缩质量，范围：0 到 1）
+        const quality = 0.7; // 设置为 0.7，表示 70% 的质量
+        const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
+
+        // 更新预览
+        setImagePreview(compressedDataUrl);
+      };
+    };
+  };
+
+  const addEmoji = (emoji) => {
+    setMessage(prev => prev + emoji.native);
+    setShowEmojiPicker(false);
   };
 
   return (
-    <div className="p-4 w-full">
+    <form onSubmit={handleSubmit} className="p-4 border-t border-base-300">
       {imagePreview && (
-        <div className="mb-3 flex items-center gap-2">
-          <div className="relative">
-            <img
-              src={imagePreview}
-              alt="Preview"
-              className="w-20 h-20 object-cover rounded-lg border border-zinc-700"
-            />
-            <button
-              onClick={removeImage}
-              className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-base-300
-              flex items-center justify-center"
-              type="button"
-            >
-              <X className="size-3" />
-            </button>
-          </div>
+        <div className="mb-2 relative w-fit">
+          <img
+            src={imagePreview}
+            alt="Preview"
+            className="w-32 h-32 object-cover rounded-md"
+          />
+          <button
+            type="button"
+            className="absolute -top-2 -right-2 btn btn-sm btn-circle btn-error"
+            onClick={() => setImagePreview(null)}
+          >
+            ✕
+          </button>
         </div>
       )}
 
-      <form onSubmit={handleSendMessage} className="flex items-center gap-2">
-        <div className="flex-1 flex gap-2">
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          className="btn btn-circle btn-ghost btn-sm"
+          onClick={() => imageInputRef.current?.click()}
+        >
+          <Image className="size-5" />
+        </button>
+
+        <button
+          type="button"
+          className="btn btn-circle btn-ghost btn-sm"
+          onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+        >
+          <Smile className="size-5" />
+        </button>
+
+        <div className="flex-1 relative">
           <input
             type="text"
-            className="w-full input input-bordered rounded-lg input-sm sm:input-md"
-            placeholder="Type a message..."
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-          />
-          <input
-            type="file"
-            accept="image/*"
-            className="hidden"
-            ref={fileInputRef}
-            onChange={handleImageChange}
+            placeholder="Type a message"
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            className="w-full input input-bordered"
           />
 
-          <button
-            type="button"
-            className={`hidden sm:flex btn btn-circle
-                     ${imagePreview ? "text-emerald-500" : "text-zinc-400"}`}
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <Image size={20} />
-          </button>
+          {showEmojiPicker && (
+            <div className="absolute bottom-full mb-2">
+              <Picker
+                data={data}
+                onEmojiSelect={addEmoji}
+                theme="light"
+                previewPosition="none"
+                skinTonePosition="none"
+              />
+            </div>
+          )}
         </div>
-        <button
-          type="submit"
-          className="btn btn-sm btn-circle"
-          disabled={!text.trim() && !imagePreview}
-        >
-          <Send size={22} />
+
+        <button type="submit" className="btn btn-circle btn-ghost btn-sm">
+          <Send className="size-5" />
         </button>
-      </form>
-    </div>
+
+        <input
+          type="file"
+          accept="image/*"
+          onChange={handleImageChange}
+          ref={imageInputRef}
+          className="hidden"
+        />
+      </div>
+    </form>
   );
 };
+
 export default MessageInput;

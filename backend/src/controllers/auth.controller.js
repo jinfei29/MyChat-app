@@ -2,6 +2,7 @@ import { generateToken } from "../lib/utils.js";
 import User from "../models/user.model.js";
 import bcrypt from "bcryptjs";
 import cloudinary from "../lib/cloudinary.js";
+import { io } from "../lib/socket.js";
 
 export const signup = async (req, res) => {
   const { fullName, email, password } = req.body;
@@ -99,12 +100,40 @@ export const updateProfile = async (req, res) => {
       userId,
       { profilePic: uploadResponse.secure_url },
       { new: true }
-    );
+    ).select("-password");
 
     res.status(200).json(updatedUser);
   } catch (error) {
     console.log("error in update profile:", error);
-    res.status(500).json({ message: "Internal server error" });
+    res.status(500).json({ message: "更新头像失败" });
+  }
+};
+
+export const updateFullName = async (req, res) => {
+  try {
+    const { fullName } = req.body;
+    const userId = req.user._id;
+
+    if (!fullName || fullName.trim().length < 2) {
+      return res.status(400).json({ message: "用户名至少需要2个字符" });
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { fullName: fullName.trim() },
+      { new: true }
+    ).select("-password");
+
+    // 广播用户名更新事件给所有在线用户
+    io.emit("userUpdated", {
+      userId: updatedUser._id,
+      fullName: updatedUser.fullName
+    });
+
+    res.status(200).json(updatedUser);
+  } catch (error) {
+    console.log("error in update fullname:", error);
+    res.status(500).json({ message: "更新用户名失败" });
   }
 };
 

@@ -73,10 +73,24 @@ export const useAuthStore = create((set, get) => ({
     try {
       const res = await axiosInstance.put("/auth/update-profile", data);
       set({ authUser: res.data });
-      toast.success("Profile updated successfully");
+      toast.success("头像更新成功");
     } catch (error) {
       console.log("error in update profile:", error);
-      toast.error(error.response.data.message);
+      toast.error(error.response?.data?.message || "更新头像失败");
+    } finally {
+      set({ isUpdatingProfile: false });
+    }
+  },
+
+  updateFullName: async (fullName) => {
+    set({ isUpdatingProfile: true });
+    try {
+      const res = await axiosInstance.put("/auth/update-fullname", { fullName });
+      set({ authUser: res.data });
+      toast.success("用户名更新成功");
+    } catch (error) {
+      console.log("error in update fullname:", error);
+      toast.error(error.response?.data?.message || "更新用户名失败");
     } finally {
       set({ isUpdatingProfile: false });
     }

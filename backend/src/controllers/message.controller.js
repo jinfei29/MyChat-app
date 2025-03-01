@@ -7,7 +7,11 @@ import { getReceiverSocketId, io } from "../lib/socket.js";
 export const getUsersForSidebar = async (req, res) => {
   try {
     const loggedInUserId = req.user._id;
-    const filteredUsers = await User.find({ _id: { $ne: loggedInUserId } }).select("-password");
+    // 查找所有不是当前用户且不是机器人的用户
+    const filteredUsers = await User.find({
+      _id: { $ne: loggedInUserId }, // 排除当前用户
+      isBot: false                  // 排除机器人
+    }).select("-password");         // 不返回密码
 
     res.status(200).json(filteredUsers);
   } catch (error) {
@@ -15,6 +19,7 @@ export const getUsersForSidebar = async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 };
+
 
 export const getMessages = async (req, res) => {
   try {
@@ -26,7 +31,7 @@ export const getMessages = async (req, res) => {
         { senderId: myId, receiverId: userToChatId },
         { senderId: userToChatId, receiverId: myId },
       ],
-    });
+    }).populate("senderId", "-password");
 
     res.status(200).json(messages);
   } catch (error) {
