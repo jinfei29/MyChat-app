@@ -129,6 +129,12 @@ export const updateFullName = async (req, res) => {
       userId: updatedUser._id,
       fullName: updatedUser.fullName
     });
+    
+    console.log('广播用户更新事件:', {
+      userId: updatedUser._id,
+      fullName: updatedUser.fullName
+    });
+
 
     res.status(200).json(updatedUser);
   } catch (error) {

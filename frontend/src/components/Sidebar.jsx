@@ -11,6 +11,7 @@ import FriendRequestsModal from "./FriendRequestsModal";
 
 const Sidebar = () => {
   const {
+    getUsers,
     selectedUser,
     selectedGroup,
     setSelectedUser,
@@ -24,9 +25,11 @@ const Sidebar = () => {
     subscribeToGroupEvents,
     unsubscribeFromGroupEvents,
     unreadInvitationsCount,
+    subscribeToMessages,
+    unsubscribeFromMessages
   } = useChatStore();
 
-  const { onlineUsers } = useAuthStore();
+  const { onlineUsers, subscribeToUserEvents , unsubscribeFromUserEvents  } = useAuthStore();
   const { 
     friends, 
     getFriendList, 
@@ -51,16 +54,22 @@ const Sidebar = () => {
     getGroupChats();
     getGroupInvitations();
     getFriendRequests();
-  }, [getFriendList, getFriendRequests, getGroupChats, getGroupInvitations]);
+    getUsers();
+    
+  }, [getFriendList, getFriendRequests, getGroupChats, getGroupInvitations,getUsers]);
 
   useEffect(() => {
     subscribeToFriendEvents();
     subscribeToGroupEvents();
+    subscribeToMessages();
+    subscribeToUserEvents();
     return () => {
+      unsubscribeFromMessages();
       unsubscribeFromFriendEvents();
       unsubscribeFromGroupEvents();
+      unsubscribeFromUserEvents();
     }
-  }, [subscribeToFriendEvents, subscribeToGroupEvents, unsubscribeFromFriendEvents, unsubscribeFromGroupEvents]);
+  }, [subscribeToFriendEvents, subscribeToGroupEvents, subscribeToMessages, subscribeToUserEvents, unsubscribeFromFriendEvents, unsubscribeFromGroupEvents, unsubscribeFromMessages, unsubscribeFromUserEvents]);
 
   const onlineFriends = friends.filter((friend) => onlineUsers.includes(friend._id));
   const filteredFriends = showOnlineOnly

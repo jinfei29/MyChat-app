@@ -225,51 +225,6 @@ export const useChatStore = create((set, get) => ({
     socket.off("memberLeftGroup");
     socket.off("groupDissolved");
     socket.off("announcementUpdated");
-    socket.off("userUpdated");
-
-    // 监听用户名更新
-    socket.on("userUpdated", ({ userId, fullName }) => {
-      const { users, selectedUser, groupChats, messages } = get();
-
-      // 更新用户列表中的用户名
-      const updatedUsers = users.map(user =>
-        user._id === userId ? { ...user, fullName } : user
-      );
-
-      // 更新选中的用户名
-      let updatedSelectedUser = selectedUser;
-      if (selectedUser?._id === userId) {
-        updatedSelectedUser = { ...selectedUser, fullName };
-      }
-
-      // 更新群组中的成员名称
-      const updatedGroupChats = groupChats.map(group => ({
-        ...group,
-        members: group.members.map(member =>
-          member._id === userId ? { ...member, fullName } : member
-        ),
-        admin: group.admin._id === userId ? { ...group.admin, fullName } : group.admin
-      }));
-
-      // 更新消息中的发送者名称
-      const updatedMessages = messages.map(message => {
-        if (message.senderId._id === userId) {
-          return {
-            ...message,
-            senderId: { ...message.senderId, fullName }
-          };
-        }
-        return message;
-      });
-
-      // 更新状态
-      set({
-        users: updatedUsers,
-        selectedUser: updatedSelectedUser,
-        groupChats: updatedGroupChats,
-        messages: updatedMessages
-      });
-    });
 
     // 监听群成员退出
     socket.on("memberLeftGroup", ({ groupId, userId, updatedGroup }) => {
@@ -456,6 +411,9 @@ export const useChatStore = create((set, get) => ({
     socket.off("newMessage");
     socket.off("newGroupMessage");
     socket.off("newGroupCreated");
+    socket.off("groupProfileUpdated");
+    socket.off("announcementUpdated");
+
   },
 
   createGroupChat: async (groupData) => {
@@ -563,18 +521,18 @@ export const useChatStore = create((set, get) => ({
     }
   },
 
-  // AI 机器人相关方法
-  initializeAiBot: async () => {
-    try {
-      console.log("正在初始化 AI 机器人...");
-      const response = await axiosInstance.get("/ai-bot/initialize");
-      console.log("AI 机器人初始化响应:", response.data);
-      return response.data;
-    } catch (error) {
-      console.error("初始化 AI 机器人失败:", error);
-      throw error;
-    }
-  },
+  // // AI 机器人相关方法
+  // initializeAiBot: async () => {
+  //   try {
+  //     console.log("正在初始化 AI 机器人...");
+  //     const response = await axiosInstance.get("/ai-bot/initialize");
+  //     console.log("AI 机器人初始化响应:", response.data);
+  //     return response.data;
+  //   } catch (error) {
+  //     console.error("初始化 AI 机器人失败:", error);
+  //     throw error;
+  //   }
+  // },
 
   sendMessageToBot: async (message) => {
     try {

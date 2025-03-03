@@ -2,6 +2,8 @@ import { create } from "zustand";
 import { axiosInstance } from "../lib/axios.js";
 import toast from "react-hot-toast";
 import { io } from "socket.io-client";
+import { useChatStore } from "./useChatStore.js";
+import { useFriendStore } from "./useFriendStore.js";
 
 const BASE_URL = import.meta.env.MODE === "development" ? "http://localhost:5001" : "/";
 
@@ -116,4 +118,77 @@ export const useAuthStore = create((set, get) => ({
   disconnectSocket: () => {
     if (get().socket?.connected) get().socket.disconnect();
   },
+  
+
+
+  // 订阅用户事件
+  subscribeToUserEvents: () => {
+    const socket = get().socket;
+    if (!socket) return;
+
+  // 监听用户名更新
+  socket.on("userUpdated", ({ userId, fullName }) => {
+    const { users, selectedUser, groupChats, messages } = useChatStore.getState();
+    const { friends }=useFriendStore.getState();
+    console.log('userUpdated，fullName',fullName,userId,selectedUser,users,friends)
+    // 更新用户列表中的用户名
+    const updatedUsers = users.map(user =>
+      user._id === userId ? { ...user, fullName } : user
+    );
+    
+    const updatedFriends = friends.map(friend =>
+      friend._id === userId ? { ...friend, fullName } : friend
+    );
+    
+    // 更新选中的用户名
+    let updatedSelectedUser = selectedUser;
+    if (selectedUser?._id === userId) {
+      updatedSelectedUser = { ...selectedUser, fullName };
+    }
+
+    // 更新群组中的成员名称
+    const updatedGroupChats = groupChats.map(group => ({
+      ...group,
+      members: group.members.map(member =>
+        member._id === userId ? { ...member, fullName } : member
+      ),
+      admin: group.admin._id === userId ? { ...group.admin, fullName } : group.admin
+    }));
+
+    // 更新消息中的发送者名称
+    const updatedMessages = messages.map(message => {
+      if (message.senderId._id === userId) {
+        return {
+          ...message,
+          senderId: { ...message.senderId, fullName }
+        };
+      }
+      return message;
+    });
+
+
+   // 更新状态
+    useChatStore.setState({
+      users: updatedUsers,
+      selectedUser: updatedSelectedUser,
+      groupChats: updatedGroupChats,
+      messages: updatedMessages
+    });
+    useFriendStore.setState({
+      friends: updatedFriends
+    });
+    console.log('updatedFriends', updatedFriends);
+
+
+    console.log('updatedUsers', updatedUsers);
+  });
+  },
+
+  unsubscribeFromUserEvents: () => {
+    const socket = get().socket;
+    if (!socket) return;
+    socket.off("userUpdated");
+  }
+
+
 }));

@@ -166,6 +166,5 @@ export const useFriendStore = create((set) => ({
     socket.off("friendRequestAccepted");
     socket.off("friendRequestRejected");
     socket.off("friendDeleted");
-    socket.off("groupInvitation");
   },
 })); 

@@ -21,7 +21,7 @@ export const createGroupChat = async (req, res) => {
     });
 
     await newGroupChat.save();
-    
+
     // 填充成员信息
     const populatedGroup = await GroupChat.findById(newGroupChat._id)
       .populate("members", "-password")
@@ -36,7 +36,7 @@ export const createGroupChat = async (req, res) => {
       createdAt: populatedGroup.createdAt,
       updatedAt: populatedGroup.updatedAt
     });
-    
+
     // 向所有成员广播新群组创建的消息
     allMembers.forEach((memberId) => {
       // 跳过创建者
@@ -47,7 +47,7 @@ export const createGroupChat = async (req, res) => {
 
       const memberSocketId = getReceiverSocketId(memberId.toString());
       console.log(`成员 ${memberId} 的 socket ID:`, memberSocketId);
-      
+
       if (memberSocketId) {
         console.log(`向成员 ${memberId} 发送新群组通知`);
         // 确保发送格式化后的群组数据
@@ -82,7 +82,7 @@ export const createGroupChat = async (req, res) => {
 export const getGroupChats = async (req, res) => {
   try {
     const userId = req.user._id;
-    
+
     const groupChats = await GroupChat.find({ members: userId })
       .populate("members", "-password")
       .populate("admin", "-password");
@@ -104,7 +104,7 @@ export const getGroupMessages = async (req, res) => {
     if (!group || !group.members.includes(userId)) {
       return res.status(403).json({ error: "你不是该群组的成员" });
     }
-    
+
     const messages = await GroupMessage.find({ groupId })
       .populate("senderId", "-password")
       .sort({ createdAt: 1 });
@@ -121,7 +121,7 @@ export const sendGroupMessage = async (req, res) => {
     const { text, image } = req.body;
     const { groupId } = req.params;
     const senderId = req.user._id;
-    const sender=req.user.fullName;
+    const sender = req.user.fullName;
 
     // 验证发送者是否是群组成员
     const group = await GroupChat.findById(groupId);
@@ -146,12 +146,12 @@ export const sendGroupMessage = async (req, res) => {
       image: imageUrl,
     });
 
-    const newLastMessage={
+    const newLastMessage = {
       content: text,
       sender: sender,
       timestamp: new Date()
     }
-    group.lastMessage=newLastMessage;
+    group.lastMessage = newLastMessage;
     await group.save();
     // 先保存消息
     await newMessage.save();
@@ -191,7 +191,7 @@ export const leaveGroup = async (req, res) => {
     const group = await GroupChat.findById(groupId)
       .populate("members", "-password")
       .populate("admin", "-password");
-      
+
     if (!group) {
       return res.status(404).json({ error: "群组不存在" });
     }
@@ -266,7 +266,7 @@ export const dissolveGroup = async (req, res) => {
 
     // 删除群组的所有消息
     await GroupMessage.deleteMany({ groupId: group._id });
-    
+
     // 删除群组
     await GroupChat.findByIdAndDelete(groupId);
 
@@ -349,7 +349,7 @@ export const getAnnouncement = async (req, res) => {
     console.error("Error in getAnnouncement: ", error);
     res.status(500).json({ error: "获取群公告失败" });
   }
-}; 
+};
 
 export const changeGroupProfilePic = async (req, res) => {
   try {
@@ -407,7 +407,7 @@ export const getGroupInvitations = async (req, res) => {
       .populate("inviterId", "fullName profilePic")
       .sort({ createdAt: -1 });
 
-      console.log(invitations)
+    console.log(invitations)
     res.status(200).json(invitations);
   } catch (error) {
     console.error("获取群聊邀请失败:", error);
