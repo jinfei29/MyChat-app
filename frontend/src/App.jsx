@@ -9,20 +9,31 @@ import ProfilePage from "./pages/ProfilePage";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useAuthStore } from "./store/useAuthStore";
 import { useThemeStore } from "./store/useThemeStore";
+import { useChatStore } from "./store/useChatStore";
 import { useEffect } from "react";
 
 import { Loader } from "lucide-react";
 import { Toaster } from "react-hot-toast";
 
 const App = () => {
-  const { authUser, checkAuth, isCheckingAuth, onlineUsers } = useAuthStore();
+  const { authUser, checkAuth, isCheckingAuth, onlineUsers, connectSocket } = useAuthStore();
   const { theme } = useThemeStore();
+  const { initializeSocketConnection } = useChatStore();
 
   console.log({ onlineUsers });
 
   useEffect(() => {
     checkAuth();
   }, [checkAuth]);
+
+  // 确保在authUser变化时连接Socket
+  useEffect(() => {
+    if (authUser) {
+      console.log("App: authUser changed, connecting socket");
+      connectSocket();
+      initializeSocketConnection();
+    }
+  }, [authUser, connectSocket, initializeSocketConnection]);
 
   console.log({ authUser });
 

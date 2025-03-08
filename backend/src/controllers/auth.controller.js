@@ -102,6 +102,12 @@ export const updateProfile = async (req, res) => {
       { new: true }
     ).select("-password");
 
+    // 广播用户头像更新事件给所有在线用户
+      io.emit("userProfileUpdated", {
+      userId: updatedUser._id,
+      profilePic: updatedUser.profilePic
+    });
+
     res.status(200).json(updatedUser);
   } catch (error) {
     console.log("error in update profile:", error);

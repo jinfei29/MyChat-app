@@ -5,30 +5,30 @@ import { useChatStore } from "../store/useChatStore";
 import { toast } from "react-hot-toast";
 import { useEffect } from "react";
 const FriendRequestsModal = ({ isOpen, onClose }) => {
-  const { 
+  const {
     friendRequests,
     acceptFriendRequest,
     rejectFriendRequest,
-    resetUnreadRequestsCount,   
-    getFriendRequests 
+    resetUnreadRequestsCount,
+    getFriendRequests
   } = useFriendStore();
 
-  const { 
-    acceptGroupInvitation, 
+  const {
+    acceptGroupInvitation,
     rejectGroupInvitation,
-    getGroupInvitations, 
-    groupInvitations 
+    getGroupInvitations,
+    groupInvitations
   } = useChatStore();
 
   const [isLoading, setIsLoading] = useState(false);
 
 
-  
+
   useEffect(() => {
     if (isOpen) {
       getFriendRequests();
       getGroupInvitations();
-      console.log(groupInvitations,friendRequests)
+      console.log(groupInvitations, friendRequests)
     }
   }, [getFriendRequests, getGroupInvitations, isOpen, resetUnreadRequestsCount]);
 

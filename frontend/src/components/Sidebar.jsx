@@ -22,11 +22,7 @@ const Sidebar = () => {
     groupChats,
     getGroupInvitations,
     groupInvitations,
-    subscribeToGroupEvents,
-    unsubscribeFromGroupEvents,
     unreadInvitationsCount,
-    subscribeToMessages,
-    unsubscribeFromMessages
   } = useChatStore();
 
   const { onlineUsers, subscribeToUserEvents , unsubscribeFromUserEvents  } = useAuthStore();
@@ -60,16 +56,12 @@ const Sidebar = () => {
 
   useEffect(() => {
     subscribeToFriendEvents();
-    subscribeToGroupEvents();
-    subscribeToMessages();
     subscribeToUserEvents();
     return () => {
-      unsubscribeFromMessages();
       unsubscribeFromFriendEvents();
-      unsubscribeFromGroupEvents();
       unsubscribeFromUserEvents();
     }
-  }, [subscribeToFriendEvents, subscribeToGroupEvents, subscribeToMessages, subscribeToUserEvents, unsubscribeFromFriendEvents, unsubscribeFromGroupEvents, unsubscribeFromMessages, unsubscribeFromUserEvents]);
+  }, [subscribeToFriendEvents,  subscribeToUserEvents, unsubscribeFromFriendEvents , unsubscribeFromUserEvents]);
 
   const onlineFriends = friends.filter((friend) => onlineUsers.includes(friend._id));
   const filteredFriends = showOnlineOnly

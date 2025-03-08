@@ -120,6 +120,7 @@ export const useFriendStore = create((set) => ({
 
     // 监听新的好友请求
     socket.on("friendRequest", ({ requestId, user }) => {
+      console.log("收到新的好友请求事件:", { requestId, user });
       set(state => ({
         friendRequests: [...state.friendRequests, { _id: requestId, user1: user }],
         unreadRequestsCount: state.unreadRequestsCount + 1
@@ -142,12 +143,14 @@ export const useFriendStore = create((set) => ({
 
     // 监听好友请求被拒绝
     socket.on("friendRequestRejected", () => {
+      console.log("收到好友请求被拒绝事件");
       toast.error("好友申请被拒绝");
     });
 
     // 监听被删除好友
     socket.on("friendDeleted", ({ userId }) => {
       const { setSelectedUser } = useChatStore.getState();
+      console.log("收到被删除好友事件:", userId);
       set(state => ({
         friends: state.friends.filter(friend => friend._id !== userId)
       }));

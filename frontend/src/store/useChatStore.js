@@ -2,6 +2,7 @@ import { create } from "zustand";
 import toast from "react-hot-toast";
 import { axiosInstance } from "../lib/axios";
 import { useAuthStore } from "./useAuthStore";
+import { useFriendStore } from "./useFriendStore";
 
 export const useChatStore = create((set, get) => ({
   messages: [],
@@ -20,6 +21,29 @@ export const useChatStore = create((set, get) => ({
   unreadMessages: {
     users: {}, // 格式: { userId: count }
     groups: {}, // 格式: { groupId: count }
+  },
+
+  // 初始化Socket连接和订阅事件
+  initializeSocketConnection: () => {
+    console.log("Initializing socket connection from useChatStore");
+    const authState = useAuthStore.getState();
+    const { authUser, socket, connectSocket } = authState;
+    const friendState=useFriendStore.getState();
+    const {subscribeToFriendEvents} = friendState;
+
+    
+    if (authUser && !socket) {
+      console.log("Connecting socket from useChatStore，从usechat开始连接");
+      connectSocket();
+    }
+    
+    if (authUser && socket) {
+      console.log("Subscribing to socket events，监听消息事件");
+      get().subscribeToMessages();
+      get().subscribeToGroupEvents();
+      subscribeToFriendEvents();
+
+    }
   },
 
   // 重置未读邀请计数
@@ -217,6 +241,7 @@ export const useChatStore = create((set, get) => ({
     const { selectedUser, updateUnreadCount } = get();
     const socket = useAuthStore.getState().socket;
     const currentUser = useAuthStore.getState().authUser;
+    console.log("Subscribing to messages...");
 
     // 清除所有之前的监听器
     socket.off("newMessage");
@@ -225,6 +250,7 @@ export const useChatStore = create((set, get) => ({
     socket.off("memberLeftGroup");
     socket.off("groupDissolved");
     socket.off("announcementUpdated");
+    socket.off("groupProfileUpdated");
 
     // 监听群成员退出
     socket.on("memberLeftGroup", ({ groupId, userId, updatedGroup }) => {
@@ -241,7 +267,7 @@ export const useChatStore = create((set, get) => ({
       // 如果当前正在查看这个群组，更新选中的群组信息
       if (selectedGroup?._id === groupId) {
         set({ selectedGroup: updatedGroup });
-        toast.info(`群成员已退出群聊`);
+        toast.success(`群成员已退出群聊`);
       }
     });
 
@@ -351,6 +377,7 @@ export const useChatStore = create((set, get) => ({
     // 监听群公告更新
     socket.on("announcementUpdated", ({ groupId, announcement }) => {
       const { groupChats, selectedGroup } = get();
+      console.log("群公告已更新:", { groupId, announcement });
 
       // 更新群组列表中的公告
       const updatedGroupChats = groupChats.map(group => {
@@ -380,6 +407,7 @@ export const useChatStore = create((set, get) => ({
     // 监听群头像更新
     socket.on("groupProfileUpdated", ({ groupId, profilePic }) => {
       const { groupChats, selectedGroup } = get();
+      console.log("群头像已更新:", { groupId, profilePic });
 
       // 更新群组列表中的头像
       const updatedGroupChats = groupChats.map(group => {
@@ -403,6 +431,7 @@ export const useChatStore = create((set, get) => ({
           }
         });
       }
+
     });
   },
 
@@ -413,6 +442,15 @@ export const useChatStore = create((set, get) => ({
     socket.off("newGroupCreated");
     socket.off("groupProfileUpdated");
     socket.off("announcementUpdated");
+    socket.off("memberLeftGroup");
+    socket.off("groupDissolved");
+    // socket.on("newMessage");//首次进来发消息（群聊私聊）看到了，
+    // socket.on("newGroupMessage");//首次进来发消息（群聊私聊）看到了，
+    // socket.on("newGroupCreated");//新群创建看到了
+    // socket.on("memberLeftGroup");//成员离开看见了
+    // socket.on("groupDissolved");//解散看见了
+    // socket.on("announcementUpdated");//群公告更新看见了
+    // socket.on("groupProfileUpdated");//群头像更新看到了
 
   },
 
@@ -742,9 +780,10 @@ removeMember: async (groupId, memberId) => {
   subscribeToGroupEvents: () => {
     const socket = useAuthStore.getState().socket;
     if (!socket) return;
-
+    console.log("Subscribing to group events...");
     // 监听群聊邀请
     socket.on("groupInvitation", (data) => {
+      console.log("收到新的群聊邀请:", data);
       set(state => ({
         groupInvitations: [...state.groupInvitations, data],
         unreadInvitationsCount: state.unreadInvitationsCount + 1
@@ -755,7 +794,7 @@ removeMember: async (groupId, memberId) => {
     // 监听被踢出群聊
     socket.on("removedFromGroup", (data) => {
       const { selectedGroup, setSelectedGroup, getGroupChats } = get();
-      
+      console.log("收到被踢出群聊事件:", data);
       // 如果当前正在查看被踢出的群聊，则关闭聊天
       if (selectedGroup?._id === data.groupId) {
         setSelectedGroup(null);
@@ -770,6 +809,7 @@ removeMember: async (groupId, memberId) => {
     // 监听群成员被踢出
     socket.on("memberRemoved", (data) => {
       const { selectedGroup } = get();
+      console.log("收到群成员被踢出事件:", data);
       if (selectedGroup?._id === data.groupId) {
         // 更新当前群组的成员列表
         set(state => ({
@@ -781,11 +821,26 @@ removeMember: async (groupId, memberId) => {
           }
         }));
       }
+      else{
+        set(state=>({
+          groupChats:state.groupChats.map(group=>{
+            if(group._id===data.groupId)
+            {
+              return {
+                ...group,
+                members:group.members.filter(member=>member._id!==data.removedMemberId)
+              }
+            }
+          })
+        }))
+      }
+
     });
 
     // 监听新成员加入
     socket.on("memberJoinedGroup", (data) => {
       const { selectedGroup } = get();
+      console.log("收到新成员加入群聊事件:", data);
       if (selectedGroup?._id === data.groupId) {
         // 更新当前群组的成员列表
         set(state => ({
@@ -794,6 +849,19 @@ removeMember: async (groupId, memberId) => {
             members: [...state.selectedGroup.members, data.newMember]
           }
         }));
+      }
+      else{
+        set(state=>({
+          groupChats:state.groupChats.map(group=>{
+            if(group._id===data.groupId)
+            {
+              return {
+                ...group,
+                members:[...group.members,data.newMember]
+              }
+            }
+          })
+        }))
       }
     });
   },

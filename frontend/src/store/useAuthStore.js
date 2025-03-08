@@ -100,18 +100,35 @@ export const useAuthStore = create((set, get) => ({
 
   connectSocket: () => {
     const { authUser } = get();
-    if (!authUser || get().socket?.connected) return;
+    if (!authUser) {
+      console.log("Cannot connect socket: No authenticated user");
+      return;
+    }
+    
+    if (get().socket?.connected) {
+      console.log("Socket already connected");
+      return;
+    }
 
+    console.log("Connecting socket for user:", authUser._id);
+    
     const socket = io(BASE_URL, {
       query: {
         userId: authUser._id,
       },
+      transports: ['websocket'], // 强制使用WebSocket
+      reconnection: true,        // 启用重连
+      reconnectionAttempts: 5,   // 尝试重连次数
+      reconnectionDelay: 1000,   // 重连延迟
     });
+    
+
     socket.connect();
 
     set({ socket: socket });
 
     socket.on("getOnlineUsers", (userIds) => {
+      console.log("Received online users:", userIds);
       set({ onlineUsers: userIds });
     });
   },
@@ -166,7 +183,6 @@ export const useAuthStore = create((set, get) => ({
       return message;
     });
 
-
    // 更新状态
     useChatStore.setState({
       users: updatedUsers,
@@ -177,17 +193,77 @@ export const useAuthStore = create((set, get) => ({
     useFriendStore.setState({
       friends: updatedFriends
     });
+    //更新后的好友列表
     console.log('updatedFriends', updatedFriends);
-
-
+    //更新名字后的用户
     console.log('updatedUsers', updatedUsers);
   });
+  
+  socket.on("userProfileUpdated", ({ userId, profilePic }) => {
+    console.log('用户头像已更新:', userId, profilePic);
+    
+    // 获取所有需要更新的状态
+    const { users, selectedUser, groupChats, messages } = useChatStore.getState();
+    const { friends } = useFriendStore.getState();
+    
+    // 更新聊天用户列表中的头像
+    const updatedUsers = users.map(user =>
+      user._id === userId ? { ...user, profilePic } : user
+    );
+    
+    // 更新好友列表中的头像
+    const updatedFriends = friends.map(friend =>
+      friend._id === userId ? { ...friend, profilePic } : friend
+    );
+    
+    // 更新当前选中用户的头像（如果是同一用户）
+    let updatedSelectedUser = selectedUser;
+    if (selectedUser?._id === userId) {
+      updatedSelectedUser = { ...selectedUser, profilePic };
+    }
+    
+    // 更新群组中成员的头像
+    const updatedGroupChats = groupChats.map(group => ({
+      ...group,
+      members: group.members.map(member =>
+        member._id === userId ? { ...member, profilePic } : member
+      ),
+      admin: group.admin._id === userId ? { ...group.admin, profilePic } : group.admin
+    }));
+    
+    // 更新消息中发送者的头像
+    const updatedMessages = messages.map(message => {
+      if (message.senderId._id === userId) {
+        return {
+          ...message,
+          senderId: { ...message.senderId, profilePic }
+        };
+      }
+      return message;
+    });
+    
+    // 更新各个store中的状态
+    useChatStore.setState({
+      users: updatedUsers,
+      selectedUser: updatedSelectedUser,
+      groupChats: updatedGroupChats,
+      messages: updatedMessages
+    });
+    
+    useFriendStore.setState({
+      friends: updatedFriends
+    });
+    
+    console.log('头像已更新 - 用户列表:', updatedUsers);
+    console.log('头像已更新 - 好友列表:', updatedFriends);
+  })
   },
 
   unsubscribeFromUserEvents: () => {
     const socket = get().socket;
     if (!socket) return;
     socket.off("userUpdated");
+    socket.off("userProfileUpdated");
   }
 
 
