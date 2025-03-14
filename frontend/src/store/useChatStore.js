@@ -130,17 +130,21 @@ export const useChatStore = create((set, get) => ({
 
       // 检查是否是发送给AI机器人的消息
       if (selectedUser.isBot) {
-        set({
-          messages: [...messages, newMessage]
-        });
+        // 先添加用户消息
+        set({ messages: [...messages, newMessage] });
 
+        // 发送消息给AI机器人
         response = await axiosInstance.post("/ai-bot/send", {
           message: messageData.text
         });
 
-        // AI机器人的响应包含用户消息和机器人消息
+        // 添加机器人的初始空消息
         set({
-          messages: [...messages, response.data.userMessage, response.data.botMessage]
+          messages: [...get().messages, {
+            ...response.data.botMessage,
+            text: '', // 初始为空，等待流式更新
+            isBot: true
+          }]
         });
       } else {
         // 普通用户消息
@@ -251,6 +255,55 @@ export const useChatStore = create((set, get) => ({
     socket.off("groupDissolved");
     socket.off("announcementUpdated");
     socket.off("groupProfileUpdated");
+    socket.off("botStreamResponse");
+
+    // 监听AI机器人的流式响应
+    socket.on("botStreamResponse", (data) => {
+      console.log("收到AI响应:", data);
+      const { messages } = get();
+      
+      if (data.type === 'chunk') {
+        // 更新现有消息的内容
+        const updatedMessages = messages.map(msg => {
+          if (msg._id === data.messageId) {
+            return {
+              ...msg,
+              text: (msg.text || '') + (data.content || '')
+            };
+          }
+          return msg;
+        });
+        set({ messages: updatedMessages });
+      } 
+      else if (data.type === 'end') {
+        // 更新最终的完整响应
+        const updatedMessages = messages.map(msg => {
+          if (msg._id === data.messageId) {
+            return {
+              ...msg,
+              text: data.fullResponse || msg.text
+            };
+          }
+          return msg;
+        });
+        set({ messages: updatedMessages });
+      }
+      else if (data.type === 'error') {
+        // 处理错误情况
+        const updatedMessages = messages.map(msg => {
+          if (msg._id === data.messageId) {
+            return {
+              ...msg,
+              text: data.error,
+              error: true
+            };
+          }
+          return msg;
+        });
+        set({ messages: updatedMessages });
+        toast.error(data.error);
+      }
+    });
 
     // 监听群成员退出
     socket.on("memberLeftGroup", ({ groupId, userId, updatedGroup }) => {
@@ -444,14 +497,7 @@ export const useChatStore = create((set, get) => ({
     socket.off("announcementUpdated");
     socket.off("memberLeftGroup");
     socket.off("groupDissolved");
-    // socket.on("newMessage");//首次进来发消息（群聊私聊）看到了，
-    // socket.on("newGroupMessage");//首次进来发消息（群聊私聊）看到了，
-    // socket.on("newGroupCreated");//新群创建看到了
-    // socket.on("memberLeftGroup");//成员离开看见了
-    // socket.on("groupDissolved");//解散看见了
-    // socket.on("announcementUpdated");//群公告更新看见了
-    // socket.on("groupProfileUpdated");//群头像更新看到了
-
+    socket.off("botStreamResponse");
   },
 
   createGroupChat: async (groupData) => {

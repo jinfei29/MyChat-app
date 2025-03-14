@@ -42,7 +42,7 @@ class WenxinAPI {
     }
   }
 
-  async chat(messages) {
+  async chat(messages, onChunk) {
     try {
       const accessToken = await this.getAccessToken();
       console.log("准备发送消息到文心一言API");
@@ -54,30 +54,55 @@ class WenxinAPI {
           messages: messages.map(msg => ({
             role: msg.role === 'assistant' ? 'assistant' : msg.role === 'system' ? 'system' : 'user',
             content: msg.content
-          }))
+          })),
+          stream: true // 启用流式输出
         },
         {
           headers: {
             'Content-Type': 'application/json'
-          }
+          },
+          responseType: 'stream' // 设置响应类型为流
         }
       );
 
-      console.log("文心一言API原始响应:", JSON.stringify(response.data, null, 2));
+      let fullResponse = '';
+      
+      return new Promise((resolve, reject) => {
+        response.data.on('data', (chunk) => {
+          try {
+            // 将 Buffer 转换为字符串
+            const lines = chunk.toString().split('\n');
+            
+            // 处理每一行数据
+            lines.forEach(line => {
+              if (line.startsWith('data: ')) {
+                const jsonStr = line.slice(6); // 移除 'data: ' 前缀
+                if (jsonStr.trim()) {
+                  const data = JSON.parse(jsonStr);
+                  if (data.result) {
+                    fullResponse += data.result;
+                    // 调用回调函数发送数据块
+                    onChunk && onChunk(data);
+                  }
+                }
+              }
+            });
+          } catch (error) {
+            console.error('处理数据块时出错:', error);
+          }
+        });
 
-      if (response.data.error_code) {
-        console.error("文心一言API返回错误:", response.data);
-        throw new Error(response.data.error_msg || "API调用失败");
-      }
+        response.data.on('end', () => {
+          console.log("流式响应完成，完整响应:", fullResponse);
+          resolve(fullResponse);
+        });
 
-      // 检查响应格式
-      if (!response.data.result) {
-        console.error("文心一言API响应格式异常:", response.data);
-        throw new Error("API响应格式异常");
-      }
+        response.data.on('error', (error) => {
+          console.error("流式响应出错:", error);
+          reject(error);
+        });
+      });
 
-      console.log("文心一言API响应成功，结果:", response.data.result);
-      return response.data.result;
     } catch (error) {
       console.error("文心一言API调用失败:", error.response?.data || error.message);
       throw new Error(error.response?.data?.error_msg || error.message || "API调用失败");
