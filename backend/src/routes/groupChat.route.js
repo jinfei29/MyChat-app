@@ -14,7 +14,9 @@ import {
   getGroupInvitations,
   acceptGroupInvitation,
   rejectGroupInvitation,
-  removeMember
+  removeMember,
+  editAnnouncement,
+  deleteAnnouncement
 } from "../controllers/groupChat.controller.js";
 
 const router = express.Router();
@@ -30,8 +32,10 @@ router.delete("/:groupId/dissolve", protectRoute, dissolveGroup);
 
 // 群聊资料
 router.put("/:groupId/profile-pic", protectRoute, changeGroupProfilePic);
-router.put("/:groupId/announcement", protectRoute, updateAnnouncement);
-router.get("/:groupId/announcement", protectRoute, getAnnouncement);
+router.post("/:groupId/announcements", protectRoute, updateAnnouncement);
+router.get("/:groupId/announcements", protectRoute, getAnnouncement);
+router.put("/:groupId/announcements/:announcementId", protectRoute, editAnnouncement);
+router.delete("/:groupId/announcements/:announcementId", protectRoute, deleteAnnouncement);
 
 // 群成员管理
 router.post("/:groupId/members/:memberId/invite", protectRoute, inviteToGroup);

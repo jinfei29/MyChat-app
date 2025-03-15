@@ -437,7 +437,7 @@ export const useChatStore = create((set, get) => ({
         if (group._id === groupId) {
           return {
             ...group,
-            announcement
+            announcements: [announcement, ...(group.announcements || [])]
           };
         }
         return group;
@@ -447,10 +447,78 @@ export const useChatStore = create((set, get) => ({
 
       // 如果当前正在查看这个群组，更新选中的群组
       if (selectedGroup?._id === groupId) {
-      set({
+        set({
           selectedGroup: {
             ...selectedGroup,
-            announcement
+            announcements: [announcement, ...(selectedGroup.announcements || [])]
+          }
+        });
+        toast.success("新的群公告已发布");
+      }
+    });
+
+    // 监听群公告删除
+    socket.on("announcementDeleted", ({ groupId, announcementId }) => {
+      const { groupChats, selectedGroup } = get();
+      console.log("群公告已删除:", { groupId, announcementId });
+
+      // 更新群组列表中的公告
+      const updatedGroupChats = groupChats.map(group => {
+        if (group._id === groupId) {
+          return {
+            ...group,
+            announcements: group.announcements.filter(
+              announcement => announcement._id !== announcementId
+            )
+          };
+        }
+        return group;
+      });
+
+      set({ groupChats: updatedGroupChats });
+
+      // 如果当前正在查看这个群组，更新选中的群组
+      if (selectedGroup?._id === groupId) {
+        set({
+          selectedGroup: {
+            ...selectedGroup,
+            announcements: selectedGroup.announcements.filter(
+              announcement => announcement._id !== announcementId
+            )
+          }
+        });
+        toast.success("群公告已被删除");
+      }
+    });
+
+    // 监听群公告编辑
+    socket.on("announcementEdited", ({ groupId, announcement }) => {
+      const { groupChats, selectedGroup } = get();
+      console.log("群公告已编辑:", { groupId, announcement });
+
+      // 更新群组列表中的公告
+      const updatedGroupChats = groupChats.map(group => {
+        if (group._id === groupId) {
+          return {
+            ...group,
+            announcements: group.announcements.map(a =>
+              a._id === announcement._id ? announcement : a
+            )
+          };
+        }
+        return group;
+      });
+
+      set({ groupChats: updatedGroupChats });
+
+      // 如果当前正在查看这个群组，更新选中的群组
+      if (selectedGroup?._id === groupId) {
+        set({
+          selectedGroup: {
+            ...selectedGroup,
+            announcements: selectedGroup.announcements.map(a =>
+              a._id === announcement._id ? announcement : a
+            )
           }
         });
         toast.success("群公告已更新");
@@ -495,6 +563,8 @@ export const useChatStore = create((set, get) => ({
     socket.off("newGroupCreated");
     socket.off("groupProfileUpdated");
     socket.off("announcementUpdated");
+    socket.off("announcementDeleted");
+    socket.off("announcementEdited");
     socket.off("memberLeftGroup");
     socket.off("groupDissolved");
     socket.off("botStreamResponse");
@@ -645,8 +715,103 @@ export const useChatStore = create((set, get) => ({
   // 添加群公告相关方法
   updateAnnouncement: async (groupId, content) => {
     try {
+      const response = await axiosInstance.post(
+        `/group-chats/${groupId}/announcements`,
+        { content }
+      );
+      console.log("群公告更新响应:", response.data);
+      // 更新本地群组数据
+      const { groupChats, selectedGroup } = get();
+      const updatedGroupChats = groupChats.map(group => {
+        if (group._id === groupId) {
+          return {
+            ...group,
+            announcements: [response.data, ...(group.announcements || [])]
+          };
+        }
+        return group;
+      });
+      console.log("更新后的群组数据:", updatedGroupChats);
+      // 如果当前正在查看这个群组，也更新选中的群组
+      if (selectedGroup?._id === groupId) {
+        set({
+          selectedGroup: {
+            ...selectedGroup,
+            announcements: [response.data, ...(selectedGroup.announcements || [])]
+          }
+        });
+      }
+
+      set({ groupChats: updatedGroupChats });
+      toast.success("群公告已发布");
+    } catch (error) {
+      console.error("Error updating announcement:", error);
+      toast.error(error.response?.data?.message || "发布群公告失败");
+      throw error;
+    }
+  },
+
+  // 获取群公告列表
+  getAnnouncements: async (groupId) => {
+    try {
+      const response = await axiosInstance.get(
+        `/group-chats/${groupId}/announcements`
+      );
+      return response.data;
+    } catch (error) {
+      console.error("Error getting announcements:", error);
+      toast.error(error.response?.data?.message || "获取群公告失败");
+      throw error;
+    }
+  },
+
+  // 删除群公告
+  deleteAnnouncement: async (groupId, announcementId) => {
+    try {
+      await axiosInstance.delete(
+        `/group-chats/${groupId}/announcements/${announcementId}`
+      );
+
+      // 更新本地群组数据
+      const { groupChats, selectedGroup } = get();
+      const updatedGroupChats = groupChats.map(group => {
+        if (group._id === groupId) {
+          return {
+            ...group,
+            announcements: group.announcements.filter(
+              announcement => announcement._id !== announcementId
+            )
+          };
+        }
+        return group;
+      });
+
+      // 如果当前正在查看这个群组，也更新选中的群组
+      if (selectedGroup?._id === groupId) {
+        set({
+          selectedGroup: {
+            ...selectedGroup,
+            announcements: selectedGroup.announcements.filter(
+              announcement => announcement._id !== announcementId
+            )
+          }
+        });
+      }
+
+      set({ groupChats: updatedGroupChats });
+      toast.success("群公告已删除");
+    } catch (error) {
+      console.error("Error deleting announcement:", error);
+      toast.error(error.response?.data?.message || "删除群公告失败");
+      throw error;
+    }
+  },
+
+  // 修改群公告
+  editAnnouncement: async (groupId, announcementId, content) => {
+    try {
       const response = await axiosInstance.put(
-        `/group-chats/${groupId}/announcement`,
+        `/group-chats/${groupId}/announcements/${announcementId}`,
         { content }
       );
 
@@ -656,7 +821,9 @@ export const useChatStore = create((set, get) => ({
         if (group._id === groupId) {
           return {
             ...group,
-            announcement: response.data
+            announcements: group.announcements.map(announcement =>
+              announcement._id === announcementId ? response.data : announcement
+            )
           };
         }
         return group;
@@ -667,7 +834,9 @@ export const useChatStore = create((set, get) => ({
         set({
           selectedGroup: {
             ...selectedGroup,
-            announcement: response.data
+            announcements: selectedGroup.announcements.map(announcement =>
+              announcement._id === announcementId ? response.data : announcement
+            )
           }
         });
       }
@@ -675,61 +844,8 @@ export const useChatStore = create((set, get) => ({
       set({ groupChats: updatedGroupChats });
       toast.success("群公告已更新");
     } catch (error) {
-      console.error("Error updating announcement:", error);
-      toast.error(error.response?.data?.message || "更新群公告失败");
-      throw error;
-    }
-  },
-  //获取群公告
-  getAnnouncement: async (groupId) => {
-    try {
-      const response = await axiosInstance.get(
-        `/group-chats/${groupId}/announcement`
-      );
-      return response.data;
-    } catch (error) {
-      console.error("Error getting announcement:", error);
-      toast.error(error.response?.data?.message || "获取群公告失败");
-      throw error;
-    }
-  },
-  //更新群公告
-  updateGroupProfilePic: async (groupId, image) => {
-    try {
-      set({ isUpdatingGroupProfilePic: true });
-      const response = await axiosInstance.put(
-        `/group-chats/${groupId}/profile-pic`,
-        { image }
-      );
-
-      // 更新本地群组数据
-      const { groupChats, selectedGroup } = get();
-      const updatedGroupChats = groupChats.map(group => {
-        if (group._id === groupId) {
-          return {
-            ...group,
-            profilePic: response.data.profilePic
-          };
-        }
-        return group;
-      });
-
-      // 如果当前正在查看这个群组，也更新选中的群组
-      if (selectedGroup?._id === groupId) {
-        set({
-          selectedGroup: {
-            ...selectedGroup,
-            profilePic: response.data.profilePic
-          }
-        });
-      }
-
-      set({ groupChats: updatedGroupChats });
-      set({ isUpdatingGroupProfilePic: false });
-      toast.success("群头像已更新");
-    } catch (error) {
-      console.error("Error updating group profile pic:", error);
-      toast.error(error.response?.data?.message || "更新群头像失败");
+      console.error("Error editing announcement:", error);
+      toast.error(error.response?.data?.message || "修改群公告失败");
       throw error;
     }
   },
@@ -761,7 +877,7 @@ export const useChatStore = create((set, get) => ({
 acceptGroupInvitation: async (groupId) => {
   try {
     const currentUser = useAuthStore.getState().authUser._id;
-    console.log(currentUser)
+    console.log(currentUser);
     const response = await axiosInstance.post(`/group-chats/${groupId}/members/${currentUser}/accept`);
     set(state => ({
       groupInvitations: state.groupInvitations.filter(inv => inv.groupId._id !== groupId)

@@ -297,14 +297,24 @@ export const updateAnnouncement = async (req, res) => {
       return res.status(403).json({ error: "只有群主才能修改群公告" });
     }
 
-    // 更新群公告
-    group.announcement = {
+    // 创建新公告
+    const newAnnouncement = {
       content,
-      updatedAt: new Date(),
-      updatedBy: userId
+      createdBy: userId,
+      createdAt: new Date(),
+      updatedAt: new Date()
     };
 
+    // 添加到公告列表
+    group.announcements.unshift(newAnnouncement);
+
     await group.save();
+
+    // 获取完整的公告信息（包括发布者信息）
+    const populatedGroup = await GroupChat.findById(groupId)
+      .populate("announcements.createdBy", "fullName profilePic");
+
+    const latestAnnouncement = populatedGroup.announcements[0];
 
     // 通知所有群成员公告已更新
     group.members.forEach((member) => {
@@ -313,27 +323,28 @@ export const updateAnnouncement = async (req, res) => {
         if (memberSocketId) {
           io.to(memberSocketId).emit("announcementUpdated", {
             groupId: group._id,
-            announcement: group.announcement
+            announcement: latestAnnouncement
           });
         }
       }
     });
 
-    res.status(200).json(group.announcement);
+    res.status(200).json(latestAnnouncement);
   } catch (error) {
     console.error("Error in updateAnnouncement: ", error);
     res.status(500).json({ error: "更新群公告失败" });
   }
 };
 
-// 获取群公告
+// 获取群公告列表
 export const getAnnouncement = async (req, res) => {
   try {
     const { groupId } = req.params;
     const userId = req.user._id;
 
     const group = await GroupChat.findById(groupId)
-      .populate("announcement.updatedBy", "fullName profilePic");
+      .populate("announcements.createdBy", "fullName profilePic")
+      .select("announcements");
 
     if (!group) {
       return res.status(404).json({ error: "群组不存在" });
@@ -344,13 +355,117 @@ export const getAnnouncement = async (req, res) => {
       return res.status(403).json({ error: "你不是该群组的成员" });
     }
 
-    res.status(200).json(group.announcement);
+    // 返回未删除的公告，按更新时间降序排序
+    const announcements = group.announcements
+      .filter(announcement => !announcement.isDeleted)
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+
+    res.status(200).json(announcements);
   } catch (error) {
     console.error("Error in getAnnouncement: ", error);
     res.status(500).json({ error: "获取群公告失败" });
   }
 };
 
+// 删除群公告
+export const deleteAnnouncement = async (req, res) => {
+  try {
+    const { groupId, announcementId } = req.params;
+    const userId = req.user._id;
+
+    const group = await GroupChat.findById(groupId);
+    if (!group) {
+      return res.status(404).json({ error: "群组不存在" });
+    }
+
+    // 检查是否是群主
+    if (group.admin.toString() !== userId.toString()) {
+      return res.status(403).json({ error: "只有群主才能删除群公告" });
+    }
+
+    // 找到并标记公告为已删除
+    const announcement = group.announcements.id(announcementId);
+    if (!announcement) {
+      return res.status(404).json({ error: "公告不存在" });
+    }
+
+    announcement.isDeleted = true;
+    announcement.updatedAt = new Date();
+    await group.save();
+
+    // 通知所有群成员公告已删除
+    group.members.forEach((member) => {
+      if (member.toString() !== userId.toString()) {
+        const memberSocketId = getReceiverSocketId(member.toString());
+        if (memberSocketId) {
+          io.to(memberSocketId).emit("announcementDeleted", {
+            groupId: group._id,
+            announcementId
+          });
+        }
+      }
+    });
+
+    res.status(200).json({ message: "公告已删除" });
+  } catch (error) {
+    console.error("Error in deleteAnnouncement: ", error);
+    res.status(500).json({ error: "删除群公告失败" });
+  }
+};
+
+// 修改群公告
+export const editAnnouncement = async (req, res) => {
+  try {
+    const { groupId, announcementId } = req.params;
+    const { content } = req.body;
+    const userId = req.user._id;
+
+    const group = await GroupChat.findById(groupId);
+    if (!group) {
+      return res.status(404).json({ error: "群组不存在" });
+    }
+
+    // 检查是否是群主
+    if (group.admin.toString() !== userId.toString()) {
+      return res.status(403).json({ error: "只有群主才能修改群公告" });
+    }
+
+    // 找到并更新公告
+    const announcement = group.announcements.id(announcementId);
+    if (!announcement) {
+      return res.status(404).json({ error: "公告不存在" });
+    }
+
+    announcement.content = content;
+    announcement.updatedAt = new Date();
+    await group.save();
+
+    // 获取完整的公告信息
+    const populatedGroup = await GroupChat.findById(groupId)
+      .populate("announcements.createdBy", "fullName profilePic");
+    const updatedAnnouncement = populatedGroup.announcements.id(announcementId);
+
+    // 通知所有群成员公告已更新
+    group.members.forEach((member) => {
+      if (member.toString() !== userId.toString()) {
+        const memberSocketId = getReceiverSocketId(member.toString());
+        if (memberSocketId) {
+          io.to(memberSocketId).emit("announcementEdited", {
+            groupId: group._id,
+            announcement: updatedAnnouncement
+          });
+        }
+      }
+    });
+
+    res.status(200).json(updatedAnnouncement);
+  } catch (error) {
+    console.error("Error in editAnnouncement: ", error);
+    res.status(500).json({ error: "修改群公告失败" });
+  }
+};
+
+// 修改群头像
 export const changeGroupProfilePic = async (req, res) => {
   try {
     const { groupId } = req.params;
