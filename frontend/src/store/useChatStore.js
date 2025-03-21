@@ -3,6 +3,7 @@ import toast from "react-hot-toast";
 import { axiosInstance } from "../lib/axios";
 import { useAuthStore } from "./useAuthStore";
 import { useFriendStore } from "./useFriendStore";
+import { useCallStore } from "./useCallStore";
 
 export const useChatStore = create((set, get) => ({
   messages: [],
@@ -28,20 +29,23 @@ export const useChatStore = create((set, get) => ({
     console.log("Initializing socket connection from useChatStore");
     const authState = useAuthStore.getState();
     const { authUser, socket, connectSocket } = authState;
-    const friendState=useFriendStore.getState();
-    const {subscribeToFriendEvents} = friendState;
+    const friendState = useFriendStore.getState();
+    const { subscribeToFriendEvents } = friendState;
+    const callState = useCallStore.getState();
+    const { initializeCallEvents } = callState
 
-    
+
     if (authUser && !socket) {
       console.log("Connecting socket from useChatStore，从usechat开始连接");
       connectSocket();
     }
-    
+
     if (authUser && socket) {
       console.log("Subscribing to socket events，监听消息事件");
       get().subscribeToMessages();
       get().subscribeToGroupEvents();
       subscribeToFriendEvents();
+      initializeCallEvents();
 
     }
   },
@@ -261,7 +265,7 @@ export const useChatStore = create((set, get) => ({
     socket.on("botStreamResponse", (data) => {
       console.log("收到AI响应:", data);
       const { messages } = get();
-      
+
       if (data.type === 'chunk') {
         // 更新现有消息的内容
         const updatedMessages = messages.map(msg => {
@@ -274,7 +278,7 @@ export const useChatStore = create((set, get) => ({
           return msg;
         });
         set({ messages: updatedMessages });
-      } 
+      }
       else if (data.type === 'end') {
         // 更新最终的完整响应
         const updatedMessages = messages.map(msg => {
@@ -513,7 +517,7 @@ export const useChatStore = create((set, get) => ({
 
       // 如果当前正在查看这个群组，更新选中的群组
       if (selectedGroup?._id === groupId) {
-        set({
+      set({
           selectedGroup: {
             ...selectedGroup,
             announcements: selectedGroup.announcements.map(a =>
@@ -854,88 +858,88 @@ export const useChatStore = create((set, get) => ({
   getGroupInvitations: async () => {
     try {
       const res = await axiosInstance.get("/group-chats/invitations");
-      set({ 
+      set({
         groupInvitations: res.data,
-        unreadInvitationsCount: res.data.length 
+        unreadInvitationsCount: res.data.length
       });
     } catch (error) {
       console.error("获取群聊邀请失败:", error);
     }
   },
 
-// 邀请好友加入群聊
-  inviteToGroup: async (groupId,memberId) => {
+  // 邀请好友加入群聊
+  inviteToGroup: async (groupId, memberId) => {
     try {
       await axiosInstance.post(`/group-chats/${groupId}/members/${memberId}/invite`);
       toast.success("邀请已发送");
     } catch (error) {
-        console.error("邀请好友失败:", error);
+      console.error("邀请好友失败:", error);
     }
   },
 
-// 接受群聊邀请
-acceptGroupInvitation: async (groupId) => {
-  try {
-    const currentUser = useAuthStore.getState().authUser._id;
-    console.log(currentUser);
-    const response = await axiosInstance.post(`/group-chats/${groupId}/members/${currentUser}/accept`);
-    set(state => ({
-      groupInvitations: state.groupInvitations.filter(inv => inv.groupId._id !== groupId)
-    }));
-    const { getGroupChats } = get();
-    
-    // 获取并更新群聊列表
-    await getGroupChats();
-    
-    console.log("群聊邀请已接受:", response.data);
-    return response.data; // 返回接受邀请后的数据，可以是群聊信息或者其他
-  } catch (error) {
-    console.error("接受群聊邀请失败:", error);
-    throw error;
-  }
-},
+  // 接受群聊邀请
+  acceptGroupInvitation: async (groupId) => {
+    try {
+      const currentUser = useAuthStore.getState().authUser._id;
+      console.log(currentUser);
+      const response = await axiosInstance.post(`/group-chats/${groupId}/members/${currentUser}/accept`);
+      set(state => ({
+        groupInvitations: state.groupInvitations.filter(inv => inv.groupId._id !== groupId)
+      }));
+      const { getGroupChats } = get();
 
-// 拒绝群聊邀请
-rejectGroupInvitation: async (groupId) => {
-  try {
-    const currentUser = useAuthStore.getState().authUser._id;
-    const response = await axiosInstance.post(`/group-chats/${groupId}/members/${currentUser}/reject`);
-    set(state => ({
-      groupInvitations: state.groupInvitations.filter(inv => inv.groupId._id !== groupId)
-    }));
-    console.log("群聊邀请已拒绝:", response.data);
-    return response.data; // 返回拒绝邀请后的数据
-  } catch (error) {
-    console.error("拒绝群聊邀请失败:", error);
-    throw error;
-  }
-},
+      // 获取并更新群聊列表
+      await getGroupChats();
 
-// 踢出群成员
-removeMember: async (groupId, memberId) => {
-  try {
-    const response = await axiosInstance.delete(`/group-chats/${groupId}/members/${memberId}`);
-    
-    // 更新当前选中的群组信息
-    set(state => {
-      // 防止 selectedGroup 或 members 为 undefined
-      const updatedMembers = state.selectedGroup?.members?.filter(member => member._id !== memberId) || [];
-      
-      return {
-        selectedGroup: {
-          ...state.selectedGroup,
-          members: updatedMembers
-        }
-      };
-    });
-    
-    console.log("群成员已被踢出:", response.data);
-    return response.data; // 返回踢出成员后的数据
-  } catch (error) {
-    console.error("踢出群成员失败:", error);
-    throw error;
-  }
-},
+      console.log("群聊邀请已接受:", response.data);
+      return response.data; // 返回接受邀请后的数据，可以是群聊信息或者其他
+    } catch (error) {
+      console.error("接受群聊邀请失败:", error);
+      throw error;
+    }
+  },
+
+  // 拒绝群聊邀请
+  rejectGroupInvitation: async (groupId) => {
+    try {
+      const currentUser = useAuthStore.getState().authUser._id;
+      const response = await axiosInstance.post(`/group-chats/${groupId}/members/${currentUser}/reject`);
+      set(state => ({
+        groupInvitations: state.groupInvitations.filter(inv => inv.groupId._id !== groupId)
+      }));
+      console.log("群聊邀请已拒绝:", response.data);
+      return response.data; // 返回拒绝邀请后的数据
+    } catch (error) {
+      console.error("拒绝群聊邀请失败:", error);
+      throw error;
+    }
+  },
+
+  // 踢出群成员
+  removeMember: async (groupId, memberId) => {
+    try {
+      const response = await axiosInstance.delete(`/group-chats/${groupId}/members/${memberId}`);
+
+      // 更新当前选中的群组信息
+      set(state => {
+        // 防止 selectedGroup 或 members 为 undefined
+        const updatedMembers = state.selectedGroup?.members?.filter(member => member._id !== memberId) || [];
+
+        return {
+          selectedGroup: {
+            ...state.selectedGroup,
+            members: updatedMembers
+          }
+        };
+      });
+
+      console.log("群成员已被踢出:", response.data);
+      return response.data; // 返回踢出成员后的数据
+    } catch (error) {
+      console.error("踢出群成员失败:", error);
+      throw error;
+    }
+  },
 
 
   // 订阅群组相关的socket事件
@@ -952,7 +956,7 @@ removeMember: async (groupId, memberId) => {
       }));
       toast.success(`${data.inviterName} 邀请你加入群聊 "${data.groupName}"`);
     });
-    
+
     // 监听被踢出群聊
     socket.on("removedFromGroup", (data) => {
       const { selectedGroup, setSelectedGroup, getGroupChats } = get();
@@ -961,10 +965,10 @@ removeMember: async (groupId, memberId) => {
       if (selectedGroup?._id === data.groupId) {
         setSelectedGroup(null);
       }
-      
+
       // 更新群聊列表
       getGroupChats();
-      
+
       toast.error(`你已被移出群聊 "${data.groupName}"`);
     });
 
@@ -983,14 +987,13 @@ removeMember: async (groupId, memberId) => {
           }
         }));
       }
-      else{
-        set(state=>({
-          groupChats:state.groupChats.map(group=>{
-            if(group._id===data.groupId)
-            {
+      else {
+        set(state => ({
+          groupChats: state.groupChats.map(group => {
+            if (group._id === data.groupId) {
               return {
                 ...group,
-                members:group.members.filter(member=>member._id!==data.removedMemberId)
+                members: group.members.filter(member => member._id !== data.removedMemberId)
               }
             }
           })
@@ -1012,14 +1015,13 @@ removeMember: async (groupId, memberId) => {
           }
         }));
       }
-      else{
-        set(state=>({
-          groupChats:state.groupChats.map(group=>{
-            if(group._id===data.groupId)
-            {
+      else {
+        set(state => ({
+          groupChats: state.groupChats.map(group => {
+            if (group._id === data.groupId) {
               return {
                 ...group,
-                members:[...group.members,data.newMember]
+                members: [...group.members, data.newMember]
               }
             }
           })

@@ -13,6 +13,7 @@ import { app, server } from "./lib/socket.js";
 import groupChatRoutes from "./routes/groupChat.route.js";
 import aiBotRoutes from "./routes/aiBot.route.js";
 import friendshipRoutes from "./routes/friendship.route.js";
+import callRoutes from "./routes/call.route.js";
 
 dotenv.config();
 
@@ -33,6 +34,7 @@ app.use("/api/messages", messageRoutes);
 app.use("/api/group-chats", groupChatRoutes);
 app.use("/api/ai-bot", aiBotRoutes);
 app.use("/api/friendship", friendshipRoutes);
+app.use("/api/calls", callRoutes);
 
 if (process.env.NODE_ENV === "production") {
   app.use(express.static(path.join(__dirname, "../frontend/dist")));

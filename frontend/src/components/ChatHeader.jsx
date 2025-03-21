@@ -1,10 +1,11 @@
-import { Users, X, Settings, Trash2, Megaphone, UserMinus } from "lucide-react";
+import { Users, X, Settings, Trash2, Megaphone, UserMinus, MoreVertical } from "lucide-react";
 import { useAuthStore } from "../store/useAuthStore";
 import { useChatStore } from "../store/useChatStore";
 import { useFriendStore } from "../store/useFriendStore";
 import { useState } from "react";
 import GroupChatInfo from "./GroupChatInfo";
 import GroupAnnouncement from "./GroupAnnouncement";
+import CallControls from "./CallControls";
 
 const ChatHeader = () => {
   const { selectedUser, selectedGroup, setSelectedUser, setSelectedGroup, dissolveGroup } = useChatStore();
@@ -76,6 +77,9 @@ const ChatHeader = () => {
             </div>
 
             <div className="flex items-center gap-2">
+             
+              <CallControls userId={selectedGroup._id} isGroupChat={true} />
+            
               <button
                 onClick={() => setShowAnnouncement(true)}
                 className="btn btn-ghost btn-sm"
@@ -142,24 +146,29 @@ const ChatHeader = () => {
             <div>
               <h3 className="font-medium">{selectedUser.fullName}</h3>
               <p className="text-sm text-base-content/70">
-                {selectedUser.isBot ? "" :onlineUsers.includes(selectedUser._id) ? "在线" : "离线"}
+                {selectedUser.isBot ? "" : onlineUsers.includes(selectedUser._id) ? "在线" : "离线"}
               </p>
             </div>
           </div>
 
-          <button onClick={handleClose} className="btn btn-ghost btn-sm">
-            <X className="size-5" />
-          </button>
-
-          {selectedUser && !selectedUser.isBot && (
-            <button
-              onClick={handleDeleteFriend}
-              className="btn btn-ghost btn-sm text-error"
-              title="删除好友"
-            >
-              <UserMinus className="size-5" />
+          <div className="flex items-center gap-2">
+            {!selectedUser.isBot && (
+              <CallControls userId={selectedUser._id} />
+            )}
+            <button onClick={handleClose} className="btn btn-ghost btn-sm">
+              <X className="size-5" />
             </button>
-          )}
+
+            {selectedUser && !selectedUser.isBot && (
+              <button
+                onClick={handleDeleteFriend}
+                className="btn btn-ghost btn-sm text-error"
+                title="删除好友"
+              >
+                <UserMinus className="size-5" />
+              </button>
+            )}
+          </div>
         </div>
       </div>
     );
