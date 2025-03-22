@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useCallStore } from "../store/useCallStore";
-import { Phone, PhoneOff, Video, VideoOff, Mic, MicOff, X } from "lucide-react";
+import { Phone, PhoneOff, Video, VideoOff, Minimize2 } from "lucide-react";
+import FloatingCallBall from "./FloatingCallBall";
 
 const CallModal = () => {
   const {
@@ -10,7 +11,11 @@ const CallModal = () => {
     remoteStream,
     acceptCall,
     rejectCall,
-    endCall
+    endCall,
+    isMinimized,// 是否最小化
+    toggleMinimized,
+    callDuration, // 通话时长（秒）
+    formatDuration
   } = useCallStore();
 
   const localVideoRef = useRef();
@@ -33,20 +38,35 @@ const CallModal = () => {
   const isVideoCall = currentCall?.type === "video";
   const isIncoming = currentCall?.isIncoming;
   const isConnected = localStream && localStream;
-  console.log("localStream", localStream);
-  console.log("remoteStream", remoteStream);
+  console.log("currentcall", currentCall);
+
+  if(isMinimized) return <FloatingCallBall />
 
   return (
+    
     <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50">
       <div className="w-full max-w-4xl p-4">
         {/* 通话状态显示 */}
         <div className="text-center text-white mb-4">
           <h3 className="text-xl font-medium">
-            {isIncoming ? "来电" : "正在呼叫..."}
+            {isIncoming ? "来电" : "正在呼叫"}
           </h3>
+          <div className="mb-2">
+          <picture>
+            <img
+              src={isIncoming ? currentCall.callerId.profilePic : currentCall.receiverId.profilePic}
+              alt="头像"
+              className="w-24 h-24 rounded-full object-cover mx-auto"
+            />
+          </picture>
+        </div>
           <p className="text-lg">
-            {currentCall?.callerId?.fullName || "未知用户"}
+            {isIncoming ? currentCall?.callerId?.fullName : currentCall?.receiverId?.fullName}
           </p>
+          <p className="text-lg">
+           {isConnected && `${formatDuration(callDuration)}`}
+          </p>
+          
           <p className="text-base-content/70">
             {isVideoCall ? "视频通话" : "语音通话"}
           </p>
@@ -80,6 +100,15 @@ const CallModal = () => {
 
         {/* 控制按钮 */}
         <div className="flex justify-center gap-4">
+          {/* 最小化按钮 */}
+          {currentCall?.status === "accepted" && (
+            <button
+              onClick={toggleMinimized}
+              className="btn btn-circle btn-lg bg-base-300 hover:bg-base-200"
+            >
+              <Minimize2 />
+            </button>
+          )}
           {isIncoming && !isConnected ? (
             <>
               <button
@@ -109,4 +138,4 @@ const CallModal = () => {
   );
 };
 
-export default CallModal; 
+export default CallModal;

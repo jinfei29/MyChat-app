@@ -1,6 +1,6 @@
 import Call from "../models/call.model.js";
 import { io, getReceiverSocketId } from "../lib/socket.js";
-
+import User from "../models/user.model.js";
 // 发起通话
 export const initiateCall = async (req, res) => {
   try {
@@ -64,8 +64,18 @@ export const initiateCall = async (req, res) => {
         isGroupCall: false
       });
     }
+    // 查询接收者完整信息
+    const receiver = await User.findById(receiverId).select("fullName profilePic");
 
-    res.status(200).json(call);
+    // 返回响应时包含接收者的完整信息
+    res.status(200).json({
+      ...call.toObject(),
+      receiverId: {
+        _id: receiverId,
+        fullName: receiver?.fullName || "未知用户",
+        profilePic: receiver?.profilePic || "/avatar.png"  // 默认头像
+      }
+    });
   } catch (error) {
     console.error("发起通话失败:", error);
     res.status(500).json({ error: "发起通话失败" });
@@ -167,6 +177,8 @@ export const endCall = async (req, res) => {
       : call.callerId;
     
     const otherUserSocketId = getReceiverSocketId(otherUserId);
+    console.log("otherUserSocketId", otherUserSocketId,otherUserId,call);
+
     if (otherUserSocketId) {
       io.to(otherUserSocketId).emit("callEnded", {
         callId: call._id,

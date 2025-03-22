@@ -12,6 +12,10 @@ export const useCallStore = create((set, get) => ({
   remoteStream: null,
   peer: null,
   signalingQueue: [], // 💡 信令数据队列
+  isMinimized: false, // 是否最小化
+  callDuration: 0, // 通话时长（秒）
+  callTimer: null, // 通话计时器
+
 
   // 初始化通话事件监听
   initializeCallEvents: () => {
@@ -29,7 +33,7 @@ export const useCallStore = create((set, get) => ({
     socket.on("callAccepted", async (data) => {
       const { currentCall, peer } = get();
       console.log("收到接受电话callAccepted", currentCall, data);
-      if (currentCall?.receiverId === data.receiverId && peer) {
+      if (currentCall?.receiverId._id === data.receiverId && peer) {
         try {
           const stream = await navigator.mediaDevices.getUserMedia({
             video: currentCall.type === "video",
@@ -38,6 +42,7 @@ export const useCallStore = create((set, get) => ({
           stream.getTracks().forEach((track) => peer.addTrack(track, stream));
           console.log("添加本地流到 Peer:", stream);
           set({ localStream: stream });
+          get().startCallTimer();
         } catch (error) {
           console.error("获取媒体流失败:", error);
           toast.error("无法访问摄像头或麦克风");
@@ -48,18 +53,19 @@ export const useCallStore = create((set, get) => ({
     socket.on("callRejected", (data) => {
       const { currentCall } = get();
       console.log("收到电话拒绝callRejected", data, currentCall);
-      if (currentCall?.receiverId === data.receiverId) {
+
         toast.error("对方挂断了通话");
-        get().endCall();
-      }
+        get().resetCallState();
+      
     });
 
     socket.on("callEnded", (data) => {
       const { currentCall } = get();
-      if (currentCall?.receiverId === data.receiverId) {
-        toast.info("通话已结束");
-        get().endCall();
-      }
+      console.log("收到通话结束callEnded", data, currentCall);
+
+        toast.success("通话已结束");
+        get().resetCallState();
+
     });
 
     // 处理信令数据
@@ -91,7 +97,7 @@ export const useCallStore = create((set, get) => ({
         const { currentCall } = get();
         console.log(`${isInitiator ? "发起方" : "接收方"}发送信令:`, signal);
         await axiosInstance.post("/calls/signal", {
-          receiverId: isInitiator ? currentCall.receiverId : currentCall.callerId._id,
+          receiverId: isInitiator ? currentCall.receiverId._id : currentCall.callerId._id,
           signal,
           callId: currentCall.callId,
         });
@@ -137,7 +143,7 @@ export const useCallStore = create((set, get) => ({
         groupId,
         isGroupCall,
       });
-
+      console.log("initiateCall response:", response.data);
       const stream = await navigator.mediaDevices.getUserMedia({
         video: type === "video",
         audio: true,
@@ -151,7 +157,6 @@ export const useCallStore = create((set, get) => ({
         localStream: stream,
         isCallModalOpen: true,
       });
-
       return response.data;
     } catch (error) {
       console.error("发起通话失败:", error);
@@ -179,6 +184,7 @@ export const useCallStore = create((set, get) => ({
         peer,
         currentCall: { ...get().currentCall, status: "accepted" },
       });
+      get().startCallTimer();
 
       console.log("接受通话成功:", currentCall);
     } catch (error) {
@@ -193,8 +199,10 @@ export const useCallStore = create((set, get) => ({
     if (!currentCall) return;
 
     try {
-      await axiosInstance.post(`/calls/${currentCall.callId}/reject`);
+      await axiosInstance.post(`/calls/${currentCall?.callId ?? currentCall?._id}/reject`);
+      toast.success("通话已结束");
       get().resetCallState();
+
     } catch (error) {
       console.error("拒绝通话失败:", error);
       toast.error(error.response?.data?.error || "拒绝通话失败");
@@ -207,12 +215,13 @@ export const useCallStore = create((set, get) => ({
     if (!currentCall) return;
 
     try {
-      await axiosInstance.post(`/calls/${currentCall._id}/end`);
+      console.log("结束通话",currentCall);
+      await axiosInstance.post(`/calls/${currentCall?.callId ?? currentCall?._id}/end`);
 
       if (localStream) localStream.getTracks().forEach((track) => track.stop());
       if (remoteStream) remoteStream.getTracks().forEach((track) => track.stop());
       if (peer) peer.destroy();
-
+      toast.success("通话已结束");
       get().resetCallState();
     } catch (error) {
       console.error("结束通话失败:", error);
@@ -220,8 +229,36 @@ export const useCallStore = create((set, get) => ({
     }
   },
 
+  // 切换最小化状态
+  toggleMinimized: () => {
+    set(state => ({
+      isMinimized: !state.isMinimized
+    }));
+  },
+
+  // 开始计时
+  startCallTimer: () => {
+    const timer = setInterval(() => {
+      set(state => ({
+        callDuration: state.callDuration + 1
+      }));
+    }, 1000);
+    set({ callTimer: timer });
+  },
+
+  // 停止计时
+  stopCallTimer: () => {
+    const { callTimer } = get();
+    if (callTimer) {
+      clearInterval(callTimer);
+      set({ callTimer: null });
+    }
+  },
+
   // 重置通话状态
   resetCallState: () => {
+    const { stopCallTimer } = get();
+    stopCallTimer();
     set({
       currentCall: null,
       isCallModalOpen: false,
@@ -229,6 +266,22 @@ export const useCallStore = create((set, get) => ({
       remoteStream: null,
       peer: null,
       signalingQueue: [],
+      isMinimized: false,
+      callDuration: 0
     });
   },
+  
+    // 格式化通话时长
+  formatDuration : (seconds) => {
+      const hours = Math.floor(seconds / 3600);
+      const minutes = Math.floor((seconds % 3600) / 60);
+      const remainingSeconds = seconds % 60;
+  
+      if (hours > 0) {
+        return `${hours}:${minutes.toString().padStart(2, "0")}:${remainingSeconds
+          .toString()
+          .padStart(2, "0")}`;
+      }
+      return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
+    },
 }));
