@@ -24,7 +24,7 @@
     "rollup-plugin-polyfill-node": "^0.13.0",
     "simple-peer": "^9.11.1",
     "socket.io-client": "^4.8.1",
-    "zustand": "^5.0.1"
+    "zustand": "^5.0.3"
   },
   "devDependencies": {
     "@eslint/js": "^9.13.0",

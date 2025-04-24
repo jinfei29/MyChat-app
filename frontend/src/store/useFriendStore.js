@@ -4,7 +4,7 @@ import toast from "react-hot-toast";
 import { useAuthStore } from "./useAuthStore";
 import { useChatStore } from "./useChatStore";
 
-export const useFriendStore = create((set) => ({
+export const useFriendStore = create((set, get) => ({
   friends: [],
   friendRequests: [],
   searchResult: null,
@@ -113,61 +113,58 @@ export const useFriendStore = create((set) => ({
     }
   },
 
-  // 订阅好友相关的socket事件
-  subscribeToFriendEvents: () => {
-    const socket = useAuthStore.getState().socket;
-    if (!socket) return;
-
-    // 监听新的好友请求
-    socket.on("friendRequest", ({ requestId, user }) => {
-      console.log("收到新的好友请求事件:", { requestId, user });
-      set(state => ({
-        friendRequests: [...state.friendRequests, { _id: requestId, user1: user }],
-        unreadRequestsCount: state.unreadRequestsCount + 1
-      }));
-      toast.success(`收到来自 ${user.fullName} 的好友申请`);
-    });
-
-
-    // 监听好友请求被接受
-    socket.on("friendRequestAccepted", ({ friendship, user }) => {
-      console.log("收到好友请求接受事件:", { friendship, user });
-      
-      // 立即更新好友列表
-      set(state => ({
-        friends: [...state.friends, user]
-      }));
-      
-      toast.success(`${user.fullName} 接受了你的好友申请`);
-    });
-
-    // 监听好友请求被拒绝
-    socket.on("friendRequestRejected", () => {
-      console.log("收到好友请求被拒绝事件");
-      toast.error("好友申请被拒绝");
-    });
-
-    // 监听被删除好友
-    socket.on("friendDeleted", ({ userId }) => {
-      const { setSelectedUser } = useChatStore.getState();
-      console.log("收到被删除好友事件:", userId);
-      set(state => ({
-        friends: state.friends.filter(friend => friend._id !== userId)
-      }));
-      // 清除当前聊天
-      setSelectedUser(null);
-
-    });
+  // --- Socket Event Handlers (供 AuthStore 调用) ---
+  handleFriendRequest: ({ requestId, user }) => {
+    console.log("FriendStore: Handling friendRequest (previously received)", { requestId, user });
+    set(state => ({
+      friendRequests: state.friendRequests.some(req => req._id === requestId)
+        ? state.friendRequests
+        : [...state.friendRequests, { _id: requestId, user1: user }],
+      unreadRequestsCount: state.friendRequests.some(req => req._id === requestId)
+        ? state.unreadRequestsCount
+        : state.unreadRequestsCount + 1
+    }));
+    // 只有在请求不存在时提示
+    if (!get().friendRequests.some(req => req._id === requestId)) {
+        toast.success(`收到来自 ${user.fullName} 的好友申请`);
+    }
   },
 
-  // 取消订阅socket事件
-  unsubscribeFromFriendEvents: () => {
-    const socket = useAuthStore.getState().socket;
-    if (!socket) return;
+  handleFriendRequestAccepted: ({ friendship, user }) => {
+    console.log("FriendStore: Handling friendRequestAccepted", { friendship, user });
+    set(state => ({
+      friends: state.friends.some(f => f._id === user._id) ? state.friends : [...state.friends, user],
+      // 移除被接受的请求（无论是你发出的还是收到的）
+      friendRequests: state.friendRequests.filter(req => req._id !== friendship._id)
+    }));
+    // 判断是自己发出的请求被接受，还是自己接受了别人的请求
+    const currentUser = useAuthStore.getState().authUser;
+    if(friendship.user1 === currentUser?._id) { // 你发出的请求被 user (user2) 接受
+         toast.success(`${user.fullName} 接受了你的好友申请`);
+    } 
+    // else { // 你接受了 user (user1) 的请求 - 这个逻辑在 acceptFriendRequest Action 中处理更好
+    //     toast.success(`已添加 ${user.fullName} 为好友`);
+    // }
+   
+  },
 
-    socket.off("friendRequest");
-    socket.off("friendRequestAccepted");
-    socket.off("friendRequestRejected");
-    socket.off("friendDeleted");
+  handleFriendRequestRejected: ({ requestId }) => { // 后端只发送了requestId
+    console.log("FriendStore: Handling friendRequestRejected", { requestId });
+    // 无需更新状态，仅提示用户
+    toast.error("你的好友申请被拒绝了");
+    // 如果需要，可以从界面移除对应的已发送请求状态，但这需要前端额外管理已发送请求
+  },
+
+  handleFriendRemoved: ({ userId }) => {
+    const { setSelectedUser, selectedUser } = useChatStore.getState(); // 获取 selectedUser
+    console.log("FriendStore: Handling friendRemoved", userId);
+    set(state => ({
+      friends: state.friends.filter(friend => friend._id !== userId)
+    }));
+    // 如果当前正在与被删除的好友聊天，则清空聊天界面
+    if (selectedUser?._id === userId) {
+      setSelectedUser(null);
+    }
+    toast.error("你已被对方删除好友");
   },
 })); 

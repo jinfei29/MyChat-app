@@ -4,10 +4,80 @@ import toast from "react-hot-toast";
 import { io } from "socket.io-client";
 import { useChatStore } from "./useChatStore.js";
 import { useFriendStore } from "./useFriendStore.js";
+import { useCallStore } from "./useCallStore.js";
+import { devtools } from "zustand/middleware";
 
-const BASE_URL = import.meta.env.MODE === "development" ? "http://localhost:5001" : "/";
+const BASE_URL = import.meta.env.MODE === "development" ? "http://localhost:5001" : "http://8.148.28.160:5001";
 
-export const useAuthStore = create((set, get) => ({
+// 定义所有需要监听的 socket 事件
+const SOCKET_EVENTS = [
+  "newMessage", "newGroupMessage", "botStreamResponse", // Chat events
+  "getOnlineUsers", // User status events
+  "userUpdated", "userProfileUpdated", // User profile events
+  "friendRequest", "friendRequestRejected", "friendRequestAccepted", "friendDeleted", // Friend events (Added friendRequest)
+  "groupInvitation", "removedFromGroup", "memberRemoved", "memberJoinedGroup", // Group membership events
+  "memberLeftGroup", "groupDissolved", "groupProfileUpdated", "newGroupCreated", // Group status events (Added newGroupCreated)
+  "announcementUpdated", "announcementDeleted", "announcementEdited", // Group announcement events
+  "incomingCall", "callAccepted", "callRejected", "callEnded", "signalingData" // Call events
+];
+
+// 内部辅助函数：注册所有事件监听器
+const registerSocketEventHandlers = (socket) => {
+  console.log("🔌 Registering all socket event handlers...");
+  const chatStore = useChatStore.getState();
+  const friendStore = useFriendStore.getState();
+  const callStore = useCallStore.getState(); // 现在需要它了
+  const authStore = useAuthStore.getState();
+
+  // --- Chat Handlers ---
+  socket.on("newMessage", chatStore.handleNewMessage);
+  socket.on("newGroupMessage", chatStore.handleNewGroupMessage);
+  socket.on("botStreamResponse", chatStore.handleBotStreamResponse); // 假设这个handler存在于chatStore
+
+  // --- User Status Handlers ---
+  socket.on("getOnlineUsers", (userIds) => {
+    console.log("📶 Online users updated:", userIds);
+    authStore.setOnlineUsers(userIds); // 需要添加一个简单的setter
+  });
+
+  // --- User Profile Handlers ---
+  socket.on("userUpdated", authStore.handleUserUpdated); // 需要将逻辑移入handler
+  socket.on("userProfileUpdated", authStore.handleUserProfileUpdated); // 需要将逻辑移入handler
+
+  // --- Friend Handlers ---
+  socket.on("friendRequest", friendStore.handleFriendRequest); // 使用正确的名字
+  socket.on("friendRequestRejected", friendStore.handleFriendRequestRejected);
+  socket.on("friendRequestAccepted", friendStore.handleFriendRequestAccepted);
+  socket.on("friendDeleted", friendStore.handleFriendRemoved);
+
+  // --- Group Handlers ---
+  socket.on("groupInvitation", chatStore.handleGroupInvitation);
+  socket.on("removedFromGroup", chatStore.handleRemovedFromGroup);
+  socket.on("memberRemoved", chatStore.handleMemberRemoved);
+  socket.on("memberJoinedGroup", chatStore.handleMemberJoinedGroup);
+  socket.on("memberLeftGroup", chatStore.handleMemberLeftGroup);
+  socket.on("groupDissolved", chatStore.handleGroupDissolved);
+  socket.on("groupProfileUpdated", chatStore.handleGroupProfileUpdated);
+  socket.on("newGroupCreated", chatStore.handleNewGroupCreated);
+  socket.on("announcementUpdated", chatStore.handleAnnouncementUpdated);
+  socket.on("announcementDeleted", chatStore.handleAnnouncementDeleted);
+  socket.on("announcementEdited", chatStore.handleAnnouncementEdited);
+
+  // --- Call Event Handlers ---
+  socket.on("incomingCall", callStore.handleIncomingCall);
+  socket.on("callAccepted", callStore.handleCallAccepted);
+  socket.on("callRejected", callStore.handleCallRejected);
+  socket.on("callEnded", callStore.handleCallEnded);
+  socket.on("signalingData", callStore.handleSignalingData);
+};
+
+// 内部辅助函数：移除所有事件监听器
+const unregisterSocketEventHandlers = (socket) => {
+  console.log("🔌 Unregistering all socket event handlers...");
+  SOCKET_EVENTS.forEach(event => socket.off(event));
+};
+
+export const useAuthStore = create(devtools((set, get) => ({
   authUser: null,
   isSigningUp: false,
   isLoggingIn: false,
@@ -16,12 +86,14 @@ export const useAuthStore = create((set, get) => ({
   onlineUsers: [],
   socket: null,
 
+  // --- Actions ---
+  setOnlineUsers: (userIds) => set({ onlineUsers: userIds }),
+
   checkAuth: async () => {
     try {
       const res = await axiosInstance.get("/auth/check");
-
       set({ authUser: res.data });
-      get().connectSocket();
+      get().connectSocket(); // 认证成功后连接Socket
     } catch (error) {
       console.log("Error in checkAuth:", error);
       set({ authUser: null });
@@ -36,7 +108,7 @@ export const useAuthStore = create((set, get) => ({
       const res = await axiosInstance.post("/auth/signup", data);
       set({ authUser: res.data });
       toast.success("Account created successfully");
-      get().connectSocket();
+      get().connectSocket(); // 注册成功后连接Socket
     } catch (error) {
       toast.error(error.response.data.message);
     } finally {
@@ -50,8 +122,7 @@ export const useAuthStore = create((set, get) => ({
       const res = await axiosInstance.post("/auth/login", data);
       set({ authUser: res.data });
       toast.success("Logged in successfully");
-
-      get().connectSocket();
+      get().connectSocket(); // 登录成功后连接Socket
     } catch (error) {
       toast.error(error.response.data.message);
     } finally {
@@ -62,9 +133,9 @@ export const useAuthStore = create((set, get) => ({
   logout: async () => {
     try {
       await axiosInstance.post("/auth/logout");
-      set({ authUser: null });
+      get().disconnectSocket(); // 登出时断开Socket
+      set({ authUser: null }); // 清除用户信息
       toast.success("Logged out successfully");
-      get().disconnectSocket();
     } catch (error) {
       toast.error(error.response.data.message);
     }
@@ -99,172 +170,147 @@ export const useAuthStore = create((set, get) => ({
   },
 
   connectSocket: () => {
-    const { authUser } = get();
+    const { authUser, socket: existingSocket } = get();
+
     if (!authUser) {
-      console.log("Cannot connect socket: No authenticated user");
-      return;
-    }
-    
-    if (get().socket?.connected) {
-      console.log("Socket already connected");
+      console.log("❌ Cannot connect socket: No authenticated user");
       return;
     }
 
-    console.log("Connecting socket for user:", authUser._id);
-    
-    const socket = io(BASE_URL, {
-      query: {
-        userId: authUser._id,
-      },
-      transports: ['websocket'], // 强制使用WebSocket
-      reconnection: true,        // 启用重连
-      reconnectionAttempts: 5,   // 尝试重连次数
-      reconnectionDelay: 1000,   // 重连延迟
+    if (existingSocket?.connected) {
+      console.log("✅ Socket already connected");
+      return;
+    }
+
+    if (existingSocket) {
+      console.log("🔌 Disconnecting old socket before reconnecting...");
+      unregisterSocketEventHandlers(existingSocket);
+      existingSocket.disconnect();
+    }
+
+    console.log("📡 Creating new socket connection for:", authUser._id);
+    const newSocket = io(BASE_URL, {
+      query: { userId: authUser._id },
+      transports: ['websocket'],
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
     });
-    
 
-    socket.connect();
+    // --- Socket Event Listeners ---
+    newSocket.on("connect", () => {
+      console.log(`✅ Socket connected: ${newSocket.id}`);
+      set({ socket: newSocket }); // 更新Store中的Socket实例
+      registerSocketEventHandlers(newSocket); // 连接成功后注册所有事件
+    });
 
-    set({ socket: socket });
+    newSocket.on("disconnect", (reason) => {
+      console.warn(`🔌 Socket disconnected: ${reason}`);
+      unregisterSocketEventHandlers(newSocket); // 断开连接时注销事件
+      // 不立即设置 socket: null，允许自动重连
+      // 如果需要手动管理重连或彻底断开，可以在这里添加逻辑
+      // set({ socket: null, onlineUsers: [] });
+    });
 
-    socket.on("getOnlineUsers", (userIds) => {
-      console.log("Received online users:", userIds);
-      set({ onlineUsers: userIds });
+    newSocket.on("connect_error", (err) => {
+      console.error(`❌ Socket connection error: ${err.message}`);
+      // 这里可以根据错误类型决定是否彻底断开或重试
+      // unregisterSocketEventHandlers(newSocket);
+      // set({ socket: null });
     });
   },
+
   disconnectSocket: () => {
-    if (get().socket?.connected) get().socket.disconnect();
-  },
-  
-
-
-  // 订阅用户事件
-  subscribeToUserEvents: () => {
-    const socket = get().socket;
-    if (!socket) return;
-
-  // 监听用户名更新
-  socket.on("userUpdated", ({ userId, fullName }) => {
-    const { users, selectedUser, groupChats, messages } = useChatStore.getState();
-    const { friends }=useFriendStore.getState();
-    console.log('userUpdated，fullName',fullName,userId,selectedUser,users,friends)
-    // 更新用户列表中的用户名
-    const updatedUsers = users.map(user =>
-      user._id === userId ? { ...user, fullName } : user
-    );
-    
-    const updatedFriends = friends.map(friend =>
-      friend._id === userId ? { ...friend, fullName } : friend
-    );
-    
-    // 更新选中的用户名
-    let updatedSelectedUser = selectedUser;
-    if (selectedUser?._id === userId) {
-      updatedSelectedUser = { ...selectedUser, fullName };
+    const { socket } = get();
+    if (socket) {
+      console.log("🔌 Manually disconnecting socket...");
+      unregisterSocketEventHandlers(socket);
+      socket.disconnect();
+      set({ socket: null, onlineUsers: [] }); // 手动断开时清理
     }
-
-    // 更新群组中的成员名称
-    const updatedGroupChats = groupChats.map(group => ({
-      ...group,
-      members: group.members.map(member =>
-        member._id === userId ? { ...member, fullName } : member
-      ),
-      admin: group.admin._id === userId ? { ...group.admin, fullName } : group.admin
-    }));
-
-    // 更新消息中的发送者名称
-    const updatedMessages = messages.map(message => {
-      if (message.senderId._id === userId) {
-        return {
-          ...message,
-          senderId: { ...message.senderId, fullName }
-        };
-      }
-      return message;
-    });
-
-   // 更新状态
-    useChatStore.setState({
-      users: updatedUsers,
-      selectedUser: updatedSelectedUser,
-      groupChats: updatedGroupChats,
-      messages: updatedMessages
-    });
-    useFriendStore.setState({
-      friends: updatedFriends
-    });
-    //更新后的好友列表
-    console.log('updatedFriends', updatedFriends);
-    //更新名字后的用户
-    console.log('updatedUsers', updatedUsers);
-  });
-  
-  socket.on("userProfileUpdated", ({ userId, profilePic }) => {
-    console.log('用户头像已更新:', userId, profilePic);
-    
-    // 获取所有需要更新的状态
-    const { users, selectedUser, groupChats, messages } = useChatStore.getState();
-    const { friends } = useFriendStore.getState();
-    
-    // 更新聊天用户列表中的头像
-    const updatedUsers = users.map(user =>
-      user._id === userId ? { ...user, profilePic } : user
-    );
-    
-    // 更新好友列表中的头像
-    const updatedFriends = friends.map(friend =>
-      friend._id === userId ? { ...friend, profilePic } : friend
-    );
-    
-    // 更新当前选中用户的头像（如果是同一用户）
-    let updatedSelectedUser = selectedUser;
-    if (selectedUser?._id === userId) {
-      updatedSelectedUser = { ...selectedUser, profilePic };
-    }
-    
-    // 更新群组中成员的头像
-    const updatedGroupChats = groupChats.map(group => ({
-      ...group,
-      members: group.members.map(member =>
-        member._id === userId ? { ...member, profilePic } : member
-      ),
-      admin: group.admin._id === userId ? { ...group.admin, profilePic } : group.admin
-    }));
-    
-    // 更新消息中发送者的头像
-    const updatedMessages = messages.map(message => {
-      if (message.senderId._id === userId) {
-        return {
-          ...message,
-          senderId: { ...message.senderId, profilePic }
-        };
-      }
-      return message;
-    });
-    
-    // 更新各个store中的状态
-    useChatStore.setState({
-      users: updatedUsers,
-      selectedUser: updatedSelectedUser,
-      groupChats: updatedGroupChats,
-      messages: updatedMessages
-    });
-    
-    useFriendStore.setState({
-      friends: updatedFriends
-    });
-    
-    console.log('头像已更新 - 用户列表:', updatedUsers);
-    console.log('头像已更新 - 好友列表:', updatedFriends);
-  })
   },
 
-  unsubscribeFromUserEvents: () => {
-    const socket = get().socket;
-    if (!socket) return;
-    socket.off("userUpdated");
-    socket.off("userProfileUpdated");
+  // --- Event Handlers (moved logic here) ---
+  handleUserUpdated: ({ userId, fullName }) => {
+      const { users, selectedUser, groupChats, messages } = useChatStore.getState();
+      const { friends } = useFriendStore.getState();
+      console.log('AuthStore: Handling userUpdated', { userId, fullName });
+
+      // 更新用户列表中的用户名
+      const updatedUsers = users.map(user =>
+        user._id === userId ? { ...user, fullName } : user
+      );
+      const updatedFriends = friends.map(friend =>
+        friend._id === userId ? { ...friend, fullName } : friend
+      );
+      let updatedSelectedUser = selectedUser;
+      if (selectedUser?._id === userId) {
+        updatedSelectedUser = { ...selectedUser, fullName };
+      }
+      const updatedGroupChats = groupChats.map(group => ({
+        ...group,
+        members: group.members.map(member =>
+          member._id === userId ? { ...member, fullName } : member
+        ),
+        admin: group.admin._id === userId ? { ...group.admin, fullName } : group.admin
+      }));
+      const updatedMessages = messages.map(message => {
+        if (message.senderId._id === userId) {
+          return {
+            ...message,
+            senderId: { ...message.senderId, fullName }
+          };
+        }
+        return message;
+      });
+
+      useChatStore.setState({
+        users: updatedUsers,
+        selectedUser: updatedSelectedUser,
+        groupChats: updatedGroupChats,
+        messages: updatedMessages
+      });
+      useFriendStore.setState({ friends: updatedFriends });
+  },
+
+  handleUserProfileUpdated: ({ userId, profilePic }) => {
+      console.log('AuthStore: Handling userProfileUpdated:', { userId, profilePic });
+      const { users, selectedUser, groupChats, messages } = useChatStore.getState();
+      const { friends } = useFriendStore.getState();
+
+      const updatedUsers = users.map(user =>
+        user._id === userId ? { ...user, profilePic } : user
+      );
+      const updatedFriends = friends.map(friend =>
+        friend._id === userId ? { ...friend, profilePic } : friend
+      );
+      let updatedSelectedUser = selectedUser;
+      if (selectedUser?._id === userId) {
+        updatedSelectedUser = { ...selectedUser, profilePic };
+      }
+      const updatedGroupChats = groupChats.map(group => ({
+        ...group,
+        members: group.members.map(member =>
+          member._id === userId ? { ...member, profilePic } : member
+        ),
+        admin: group.admin._id === userId ? { ...group.admin, profilePic } : group.admin
+      }));
+      const updatedMessages = messages.map(message => {
+        if (message.senderId._id === userId) {
+          return {
+            ...message,
+            senderId: { ...message.senderId, profilePic }
+          };
+        }
+        return message;
+      });
+
+      useChatStore.setState({
+        users: updatedUsers,
+        selectedUser: updatedSelectedUser,
+        groupChats: updatedGroupChats,
+        messages: updatedMessages
+      });
+      useFriendStore.setState({ friends: updatedFriends });
   }
-
-
-}));
+})));

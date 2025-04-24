@@ -17,8 +17,6 @@ const ChatContainer = () => {
     isMessagesLoading,
     selectedUser,
     selectedGroup,
-    subscribeToMessages,
-    unsubscribeFromMessages,
   } = useChatStore();
   const { authUser } = useAuthStore();
   const messageEndRef = useRef(null);
@@ -33,7 +31,6 @@ const ChatContainer = () => {
           console.log("Loading group messages for group:", selectedGroup._id);
           await getGroupMessages(selectedGroup._id);
         }
-        subscribeToMessages();
       } catch (error) {
         console.error("Error loading messages:", error);
       }
@@ -42,9 +39,7 @@ const ChatContainer = () => {
     if (selectedUser || selectedGroup) {
       loadMessages();
     }
-
-    return () => unsubscribeFromMessages();
-  }, [selectedUser, selectedGroup, getMessages, getGroupMessages, subscribeToMessages, unsubscribeFromMessages]);
+  }, [selectedUser, selectedGroup, getMessages, getGroupMessages]);
 
   useEffect(() => {
     if (messageEndRef.current) {

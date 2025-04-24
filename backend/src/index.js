@@ -35,6 +35,10 @@ app.use("/api/group-chats", groupChatRoutes);
 app.use("/api/ai-bot", aiBotRoutes);
 app.use("/api/friendship", friendshipRoutes);
 app.use("/api/calls", callRoutes);
+// ✅ 测试接口
+app.get("/api/test", (req, res) => {
+  res.send("接口正常，后端已启动！");
+});
 
 if (process.env.NODE_ENV === "production") {
   app.use(express.static(path.join(__dirname, "../frontend/dist")));

@@ -103,7 +103,7 @@ export const updateProfile = async (req, res) => {
     ).select("-password");
 
     // 广播用户头像更新事件给所有在线用户
-      io.emit("userProfileUpdated", {
+    io.emit("userProfileUpdated", {
       userId: updatedUser._id,
       profilePic: updatedUser.profilePic
     });
@@ -135,7 +135,7 @@ export const updateFullName = async (req, res) => {
       userId: updatedUser._id,
       fullName: updatedUser.fullName
     });
-    
+
     console.log('广播用户更新事件:', {
       userId: updatedUser._id,
       fullName: updatedUser.fullName

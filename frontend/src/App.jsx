@@ -9,38 +9,34 @@ import ProfilePage from "./pages/ProfilePage";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useAuthStore } from "./store/useAuthStore";
 import { useThemeStore } from "./store/useThemeStore";
-import { useChatStore } from "./store/useChatStore";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 import { Loader } from "lucide-react";
 import { Toaster } from "react-hot-toast";
 import CallModal from "./components/CallModal";
 
 const App = () => {
-  const { authUser, checkAuth, isCheckingAuth, onlineUsers, connectSocket } = useAuthStore();
+  const { authUser, checkAuth, isCheckingAuth, connectSocket } = useAuthStore();
   const { theme } = useThemeStore();
-  const { initializeSocketConnection } = useChatStore();
-  // 解决 global 未定义的问题
+  
+  const initializedRef = useRef(false);
+
   if (typeof global === 'undefined') {
     window.global = window;
   }
 
-  console.log({ onlineUsers });
-
   useEffect(() => {
+    console.log("App: Checking auth...");
     checkAuth();
   }, [checkAuth]);
 
-  // 确保在authUser变化时连接Socket
   useEffect(() => {
-    if (authUser) {
-      console.log("App: authUser changed, connecting socket");
+    if (authUser && !initializedRef.current) {
+      console.log("App: Auth user detected, ensuring socket connection...");
       connectSocket();
-      initializeSocketConnection();
+      initializedRef.current = true;
     }
-  }, [authUser, connectSocket, initializeSocketConnection]);
-
-  console.log({ authUser });
+  }, [authUser, connectSocket]);
 
   if (isCheckingAuth && !authUser)
     return (
@@ -50,11 +46,9 @@ const App = () => {
     );
 
   return (
-
-      <>
+    <>
       <div data-theme={theme}>
         <Navbar />
-
         <Routes>
           <Route path="/" element={authUser ? <HomePage /> : <Navigate to="/login" />} />
           <Route path="/signup" element={!authUser ? <SignUpPage /> : <Navigate to="/" />} />
@@ -62,12 +56,10 @@ const App = () => {
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/profile" element={authUser ? <ProfilePage /> : <Navigate to="/login" />} />
         </Routes>
-
         <Toaster />
       </div>
       <CallModal />
-      </>
-
+    </>
   );
 };
 
